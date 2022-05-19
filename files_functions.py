@@ -74,8 +74,11 @@ def make_db_table (dbconnection, tablename):
 def delete_db_table (dbconnection, tablename):
     dbconnection.execute('DROP TABLE IF EXISTS ' + tablename)
 
-def add_index_db_table (dbconnection, tablename):
+def add_index_db_table_sha256 (dbconnection, tablename):
     dbconnection.execute('CREATE INDEX IF NOT EXISTS "sha" ON "' + tablename + '" ("sha256")')
+
+def add_index_db_table_filepath (dbconnection, tablename):
+    dbconnection.execute('CREATE INDEX IF NOT EXISTS "path" ON "' + tablename + '" ("filepath")')
 
 # get some info on schema, not much usefull, using DB browser better
 '''

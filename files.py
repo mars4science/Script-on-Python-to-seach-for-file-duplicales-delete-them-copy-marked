@@ -2,6 +2,11 @@
 
 # Python 3.5 tested
 
+# version 4.1 2022 May 15
+# added add command - read directory similar to read but check if filepath already in db, if so skip
+# added add_index_db_table_filepath to make index to search faster for add command and renamed add_index_db_table to add_index_db_table_sha256
+# added signal_handler to commit changes to db on ctrl-C press
+
 # version 4.0 2021 April 11
 # added makedirs command - create empty directory structure from database entries, see help for more info
 
@@ -53,7 +58,7 @@
 # changes results of outer select for FOR and slower than commit at the end; 
 # may change outer query qty returned as working due to SQLite functioning, so be careful when searcing single set of data, not one against the other
 
-from files_functions import uprint, end, make_db_table, delete_db_table, add_index_db_table
+from files_functions import uprint, end, make_db_table, delete_db_table, add_index_db_table_sha256, add_index_db_table_filepath 
 import os
 import sys
 import sqlite3
@@ -66,17 +71,25 @@ import codecs
 import hashlib
 import platform
 import shutil
+import signal
+
+def signal_handler(sig,frame):
+    print("Seems like Ctrl-C pressed, commiting changes to db")  
+    dbConnection.commit()
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, signal_handler)
 #from argparse import ArgumentParser
 
 import argparse
 from argparse import RawTextHelpFormatter
 parser = argparse.ArgumentParser(description='Process file structures, deleting dublicates renaming retained files is useful if additional info is not contained in extention - part of file name after last . symbol; paths better be passed as absolute', formatter_class=RawTextHelpFormatter)
-parser.add_argument('command', choices=['read', 'search','totals', 'delete', 'deletemarked', 'compareonly', 'change', 'copy', 'deletesame', 'makedirs'], help='command name: \ndelete - deletes files in path (--files_d) against database (--db) or other path (--files) by sha256 and only if file is found on each of all disks (--disks can be several times), also --notchecktime --mne --mnb --nmn --rename optional), \ndeletemarked - deleting (and renaming) what is marked already in database (by action field set to "todelete"; if need to redo deletion for another disk, please run "change" to semi-manually change action field) and --files_d is used to add to path stored in database at beginning and --disk is used to delete marked for that disk only as a safeguard, delete from temp table, rename what is in main table, \ncompareonly - run only matching procedure for two tables in database which should be filled in already, \ncopy - copy files from one location (--files) to other (--files_c) for those files where action field in database (--db) is set to "to copy" for specific --disk, \ndeletesame - delete dublicates in same location (--files_d) by filesize, sha256; also by name (exact or not, partial matching option same effect as do not match) and timestamp (exact ot not), \nmakedirs - make directories in path of files_c from filesdata entries in database')
+parser.add_argument('command', choices=['read','add', 'search','totals', 'delete', 'deletemarked', 'compareonly', 'change', 'copy', 'deletesame', 'makedirs'], help='command name: \nread - adds files in --filespath to database --db (modification date, size, sha256sum, path, name, --disk), \nadds - same as read but adds only those that are not already in --db (checks for same --disk AND path that includes name), \nsearch - outputs found files and info on them, \ntotals - outputs totals, \ndelete - deletes files in path (--files_d) against database (--db) or other path (--files) by sha256 and only if file is found on each of all disks (--disks can be several times), also --notchecktime --mne --mnb --nmn --rename optional), \ndeletemarked - deleting (and renaming) what is marked already in database (by action field set to "todelete"; if need to redo deletion for another disk, please run "change" to semi-manually change action field) and --files_d is used to add to path stored in database at beginning and --disk is used to delete marked for that disk only as a safeguard, delete from temp table, rename what is in main table, \ncompareonly - run only matching procedure for two tables in database which should be filled in already, \ncopy - copy files from one location (--files) to other (--files_c) for those files where action field in database (--db) is set to "to copy" for specific --disk, \ndeletesame - delete dublicates in same location (--files_d) by filesize, sha256; also by name (exact or not, partial matching option same effect as do not match) and timestamp (exact ot not), \nmakedirs - make directories in path of files_c from filesdata entries in database')
 parser.add_argument('--db', default='./temp.db', help='full path to database location, default = temp.db in current folder')
 parser.add_argument('--files', help='full path to the only/main file structure')
 parser.add_argument('--files_d', help='full path to other file structure - where objects need to be deleted')
 parser.add_argument('--files_c', help='full path to other file structure - whereto objects need to be copied for copy/or folders be created for makedirs')
-parser.add_argument('--disk', help='disk name tag of file structure info - for read, totals, search')
+parser.add_argument('--disk', help='disk name tag of file structure info - for add, read, totals, search')
 parser.add_argument('--disks', action='append', help='disk name tags when searched for candidates for deletion, if present, file should be present on all disks in main table to be considered a candidate, if omitted, should be present in main table as a whole. Should be one name per argument, several arguments possible, NOT several in one argument separated by comma')
 parser.add_argument('--pattern', help='filename expression to search, percentage sign symbol can be used as any number of any symbols, ignore case, _ symbol means any AFAIK, for exact search add --exact parameter') # symbol % in help string gives argparse error on parse_args() line
 parser.add_argument('--action', help='action text to search, usefull after processing, e.g. set to "deleted" if deleted') 
@@ -144,7 +157,7 @@ if MainAction in ['search'] and FileNameEx == None:
     print ('- search pattern ("--pattern") is required for this command')
     togo = False
 
-if MainAction in ['read', 'clean', 'copy'] and full_path == None:
+if MainAction in ['add', 'read', 'clean', 'copy'] and full_path == None:
     print ('- path to file structure ("--files") is required for this command')
     togo = False
 
@@ -374,7 +387,7 @@ def comparefiles (tablepossibledublicates, tablemain):
     # making for deletion is done only if file is found on each of all disks ([disks] variable)
 
     # added to speed up search many times in case of large number of entries to matches against
-    add_index_db_table (dbConnection, tablemain)
+    add_index_db_table_sha256 (dbConnection, tablemain)
     
     runID = 'pc 1'
     deletionFilter = '(action <> "deleted" AND action <> "todelete" OR action is NULL)'
@@ -645,10 +658,12 @@ def deletefolders(pathwheretodelete):
 
 # reading files info from a path and insert to database
 
-def readfiles(files_path, tablename):
+def addfiles(files_path, tablename, checksame):
     
     # use to make tables in new database
     make_db_table (dbConnection, tablename)
+    if checksame == True:
+        add_index_db_table_filepath (dbConnection, tablename)
 
     processed_files = 0
     processed_dirs = 0
@@ -666,38 +681,51 @@ def readfiles(files_path, tablename):
         for filename in filenames: 
 
             try:
-                filesize = os.path.getsize(os.path.join(root,filename))
-                filetime = os.path.getmtime(os.path.join(root,filename))
-                filepath = os.path.join(root,filename)
+                filepath = os.path.join(root,filename)    
+                filepath_db = filepath[len(files_path):]
+                filesfound = 0
 
-                # read sha256
-                BLOCKSIZE = 65536 # in bytes, 65536*256 ~= 16mb, * 256 increases processing time with many small files
-                #BLOCKSIZE_start = 
-                hasher = hashlib.sha256() #md5
-                hasher_start = hashlib.sha256()
-                hasher_end = hashlib.sha256()
-                with open(filepath, 'rb') as afile:
-                    buf = afile.read(BLOCKSIZE)
-                    hasher_start.update(buf)
-                    buf_last = buf # added for case of 0 length files
-                    while len(buf) > 0:
-                        hasher.update(buf)
-                        buf_last = buf
+                if checksame == True:
+                    c = dbConnection.execute('SELECT disk, filesize, filename, filenamenew, filepath, filetime, action, runID, sha256, sha256_start, sha256_end FROM ' + tablename + ' WHERE disk = "' + diskname + '" AND filepath = "' + filepath_db + '"') 
+                    for row in c:
+                        filesfound += 1
+                        #files_size += row['filesize']
+                
+                if filesfound == 0:
+             
+                    # uprint (filepath)
+                    filesize = os.path.getsize(os.path.join(root,filename))
+                    filetime = os.path.getmtime(os.path.join(root,filename))
+                    
+
+                    # read sha256
+                    BLOCKSIZE = 65536 # in bytes, 65536*256 ~= 16mb, * 256 increases processing time with many small files
+                    #BLOCKSIZE_start = 
+                    hasher = hashlib.sha256() #md5
+                    hasher_start = hashlib.sha256()
+                    hasher_end = hashlib.sha256()
+                    with open(filepath, 'rb') as afile:
                         buf = afile.read(BLOCKSIZE)
-                #buf_last = buf
-                hasher_end.update(buf_last)
-                sha256_temp = hasher.hexdigest()
-                sha256_start = hasher_start.hexdigest()
-                sha256_end = hasher_end.hexdigest()
-                #print(hasher.hexdigest())
+                        hasher_start.update(buf)
+                        buf_last = buf # added for case of 0 length files
+                        while len(buf) > 0:
+                            hasher.update(buf)
+                            buf_last = buf
+                            buf = afile.read(BLOCKSIZE)
+                    #buf_last = buf
+                    hasher_end.update(buf_last)
+                    sha256_temp = hasher.hexdigest()
+                    sha256_start = hasher_start.hexdigest()
+                    sha256_end = hasher_end.hexdigest()
+                    #print(hasher.hexdigest())
 
-        #        filepath = filepath [len(diskMount):].replace ('/', '\\') # as paths are for stored in Windows format, need to change path format that was read in Linux
+            #        filepath = filepath [len(diskMount):].replace ('/', '\\') # as paths are for stored in Windows format, need to change path format that was read in Linux
 
-                #uprint (os.path.join(root,filename))
-                #time.sleep (1)
+                    #uprint (os.path.join(root,filename))
+                    #time.sleep (1)
 
-                # dbConnection.execute('INSERT INTO filesdata (disk, filename, filepath, filesize, filetime) VALUES ("' + diskname + '", "' + filename + '", "' + filepath + '", ' + str(filesize) + ', ' + str(CAST(filetime AS INTEGER)) + ')')
-                dbConnection.execute('INSERT INTO ' + tablename + ' (disk, filename, filepath, filesize, filetime, sha256, sha256_start, sha256_end) VALUES (?,?,?,?, CAST(? AS INTEGER),?,?,?)', (diskname, filename, filepath[len(files_path):], filesize, filetime, sha256_temp, sha256_start, sha256_end))
+                    # dbConnection.execute('INSERT INTO filesdata (disk, filename, filepath, filesize, filetime) VALUES ("' + diskname + '", "' + filename + '", "' + filepath + '", ' + str(filesize) + ', ' + str(CAST(filetime AS INTEGER)) + ')')
+                    dbConnection.execute('INSERT INTO ' + tablename + ' (disk, filename, filepath, filesize, filetime, sha256, sha256_start, sha256_end) VALUES (?,?,?,?, CAST(? AS INTEGER),?,?,?)', (diskname, filename, filepath_db, filesize, filetime, sha256_temp, sha256_start, sha256_end))
 
                 #dbConnection.commit()
 
@@ -721,15 +749,26 @@ def readfiles(files_path, tablename):
     print ('Sum    of objects that have been read : {:,.0f}'.format(processed_dirs + processed_files).replace(',', ' '))
     #end(startTime, dbConnection)
 
+
 # ----------------------------------------------------------------------------------------------------------------------------------------------------#
 
 if MainAction == 'read':
     print ('-reading files to database')
-    readfiles (full_path, tablename_main)
+    addfiles (full_path, tablename_main, False)
     print ()
     end(startTime, dbConnection)
 
 # ----------------------------------------------------------------------------------------------------------------------------------------------------
+
+if MainAction == 'add':
+    print ('-reading/adding new files to database')
+    addfiles (full_path, tablename_main, True)
+    print ()
+    end(startTime, dbConnection)
+
+# ----------------------------------------------------------------------------------------------------------------------------------------------------
+
+
 #
 # delete files in path if same file is found in database or other path (one and only choice should be supplied)
 
@@ -738,12 +777,12 @@ if MainAction == 'delete':
     if (full_path != None): # ^ (dblocation == './temp.db') 
         print ('-reading files to agains which to check to temp database main table')
         delete_db_table (dbConnection, tablename_main) # detele previous reads if existed 
-        readfiles (full_path, tablename_main)
+        addfiles (full_path, tablename_main, False)
         print ()
 
     print ('-reading files to possibly delete later in case dublicates are found in database')
     delete_db_table (dbConnection, tablename_temp) # detele previous reads if existed 
-    readfiles (full_path_d, tablename_temp)
+    addfiles (full_path_d, tablename_temp, False)
     print ()
     print ('-comparing files and marking found dublicates for deletion')
     comparefiles (tablename_temp, tablename_main)
@@ -866,7 +905,7 @@ if MainAction == 'deletesame':
 
     print ('-reading files to database main table')
     delete_db_table (dbConnection, tablename_temp) # detele previous reads if existed 
-    readfiles (full_path_d, tablename_temp)
+    addfiles (full_path_d, tablename_temp, False)
     print ()
 
     print ('-comparing files and marking found dublicates for deletion')
