@@ -2,6 +2,15 @@
 
 # Python 3.5 tested
 
+# version 4.4 2022 October 24
+# fixed check for duplicates for "add" command in case of files containing double quotation marks
+# for "copy" added exception catch when checking for existence of source/destination file and re-try reading several times (error was often due to USB malfunction)
+#   re-try not tested yet, copy function works after adding above changes
+# minor comment fix for "makedirs"
+
+# version 4.2 2022 July 10
+# added check for disk (diskname) for "add" command
+
 # version 4.1 2022 May 15
 # added add command - read directory similar to read but check if filepath already in db, if so skip
 # added add_index_db_table_filepath to make index to search faster for add command and renamed add_index_db_table to add_index_db_table_sha256
@@ -84,7 +93,7 @@ signal.signal(signal.SIGINT, signal_handler)
 import argparse
 from argparse import RawTextHelpFormatter
 parser = argparse.ArgumentParser(description='Process file structures, deleting dublicates renaming retained files is useful if additional info is not contained in extention - part of file name after last . symbol; paths better be passed as absolute', formatter_class=RawTextHelpFormatter)
-parser.add_argument('command', choices=['read','add', 'search','totals', 'delete', 'deletemarked', 'compareonly', 'change', 'copy', 'deletesame', 'makedirs'], help='command name: \nread - adds files in --filespath to database --db (modification date, size, sha256sum, path, name, --disk), \nadds - same as read but adds only those that are not already in --db (checks for same --disk AND path that includes name), \nsearch - outputs found files and info on them, \ntotals - outputs totals, \ndelete - deletes files in path (--files_d) against database (--db) or other path (--files) by sha256 and only if file is found on each of all disks (--disks can be several times), also --notchecktime --mne --mnb --nmn --rename optional), \ndeletemarked - deleting (and renaming) what is marked already in database (by action field set to "todelete"; if need to redo deletion for another disk, please run "change" to semi-manually change action field) and --files_d is used to add to path stored in database at beginning and --disk is used to delete marked for that disk only as a safeguard, delete from temp table, rename what is in main table, \ncompareonly - run only matching procedure for two tables in database which should be filled in already, \ncopy - copy files from one location (--files) to other (--files_c) for those files where action field in database (--db) is set to "to copy" for specific --disk, \ndeletesame - delete dublicates in same location (--files_d) by filesize, sha256; also by name (exact or not, partial matching option same effect as do not match) and timestamp (exact ot not), \nmakedirs - make directories in path of files_c from filesdata entries in database')
+parser.add_argument('command', choices=['read','add', 'search','totals', 'delete', 'deletemarked', 'compareonly', 'change', 'copy', 'deletesame', 'makedirs'], help='command name: \nread - adds files in --filespath to database --db (modification date, size, sha256sum, path, name, --disk), \nadds - same as read but adds only those that are not already in --db (checks for same --disk AND path that includes name), \nsearch - outputs found files and info on them, \ntotals - outputs totals, \ndelete - deletes files in path (--files_d) against database (--db) or other path (--files) by sha256 and only if file is found on each of all disks (--disks can be several times), also --notchecktime --mne --mnb --nmn --rename optional), \ndeletemarked - deleting (and renaming) what is marked already in database (by action field set to "todelete" in files_todelete table; if need to redo deletion for another disk, please run "change" to semi-manually change action field) and --files_d is used to add to path stored in database at beginning and --disk is used to delete marked for that disk only as a safeguard, delete from temp table, rename what is in main table, \ncompareonly - run only matching procedure for two tables in database which should be filled in already, \ncopy - copy files from one location (--files) to other (--files_c) for those files where action field in database (--db) is set to "to copy" for specific --disk, \ndeletesame - delete dublicates in same location (--files_d) by filesize, sha256; also by name (exact or not, partial matching option same effect as do not match) and timestamp (exact ot not), \nmakedirs - make directories in path of files_c from filesdata entries in database')
 parser.add_argument('--db', default='./temp.db', help='full path to database location, default = temp.db in current folder')
 parser.add_argument('--files', help='full path to the only/main file structure')
 parser.add_argument('--files_d', help='full path to other file structure - where objects need to be deleted')
@@ -165,7 +174,7 @@ if MainAction in ['copy', 'makedirs'] and full_path_c == None:
     print ('- path to second file structure (whereto copy - "--files_c") is required for this command')
     togo = False
 
-if MainAction in ['copy', 'deletemarked', 'makedirs'] and diskname == None:
+if MainAction in ['copy', 'deletemarked', 'makedirs', 'add'] and diskname == None:
     print ('- diskname ("--disk") is required for this command')
     togo = False
  
@@ -234,29 +243,63 @@ if MainAction == 'copy':
     for row_c in c:
         #print(row_c['filepath'])
         srcfile = full_path + row_c['filepath']
-        if not Path(srcfile).exists(): #.is_file()
-            uprint ('not found: ',srcfile)
-            notcopiedasnotfound += 1
-            d = dbConnection.execute('UPDATE filesdata SET action = "not copied as not found" WHERE id = ' + str(row_c['id']))
+        try_success = -10
+        try_number = 3 # number of tries in case of IO error
+        try_to = try_number
+
+        while try_to>0:
+            try:
+                source_found=Path(srcfile).exists()
+                try_to=try_success
+            except Exception as e:
+                uprint ("(Un?)expected error when check existence of source file: " + str(e))
+                uprint ("Wating several seconds and trying again...")
+                time.sleep(10)
+                try_to -= 1
+        if try_to != try_success:
+            uprint ('Seems that read of source info failed repeatedly, terminating.')
+            break # for loop
         else:
-            dstfile = full_path_c + row_c['filepath']
-            if Path(dstfile).exists(): #.is_file()
-                uprint ('already there: ',dstfile)
-                notcopiedaswerethere += 1
-                d = dbConnection.execute('UPDATE filesdata SET action = "not copied as was already there" WHERE id = ' + str(row_c['id']))
+            if not source_found: #.is_file()
+                uprint ('not found: ',srcfile)
+                notcopiedasnotfound += 1
+                d = dbConnection.execute('UPDATE filesdata SET action = "not copied as not found" WHERE id = ' + str(row_c['id']))
             else:
-                dstdir =  os.path.dirname(dstfile)
-                try:
-                    os.makedirs(dstdir) # create all directories, raise an error if it already exists
-                except Exception as e:
-                    pass
-                try:
-                    shutil.copy2(srcfile, dstdir)
-                    copied +=1
-                    d = dbConnection.execute('UPDATE filesdata SET action = "copied" WHERE id = ' + str(row_c['id']))
-                except Exception as e:
-                    notcopiedasfailed +=1
-                    d = dbConnection.execute('UPDATE filesdata SET action = "not copied as copy failed" WHERE id = ' + str(row_c['id']))
+                dstfile = full_path_c + row_c['filepath']
+                try_success = -10
+                try_number = 3 # number of tries in case of IO error
+                try_to = try_number
+                while try_to>0:
+                    try:
+                        destination_found=Path(srcfile).exists()
+                        try_to=try_success
+                    except Exception as e:
+                        uprint ("(Un?)expected error when check existence of source file: " + str(e))
+                        uprint ("Wating several seconds and trying again...")
+                        time.sleep(10)
+                        try_to -= 1
+                if try_to != try_success:
+                    uprint ('Seems that read of destination info failed repeatedly, terminating.')
+                    break # for loop
+                else:
+
+                    if Path(dstfile).exists(): #.is_file()
+                        uprint ('already there: ',dstfile)
+                        notcopiedaswerethere += 1
+                        d = dbConnection.execute('UPDATE filesdata SET action = "not copied as was already there" WHERE id = ' + str(row_c['id']))
+                    else:
+                        dstdir =  os.path.dirname(dstfile)
+                        try:
+                            os.makedirs(dstdir) # create all directories, might give an error if it already exists (catch here and pass)
+                        except Exception as e:
+                            pass
+                        try:
+                            shutil.copy2(srcfile, dstdir)
+                            copied +=1
+                            d = dbConnection.execute('UPDATE filesdata SET action = "copied" WHERE id = ' + str(row_c['id']))
+                        except Exception as e:
+                            notcopiedasfailed +=1
+                            d = dbConnection.execute('UPDATE filesdata SET action = "not copied as copy failed" WHERE id = ' + str(row_c['id']))
 
     dbConnection.commit()
 
@@ -269,7 +312,7 @@ if MainAction == 'copy':
 
 
 # ----------------------------------------------------------------------------------------------------------------------------------------------------#
-# to copy files set to be copied (field 'action' is 'to copy') - see help for detailes
+# to make folders (field 'action' is 'makedirs') - see help for detailes
 
 if MainAction == 'makedirs':
 
@@ -686,7 +729,9 @@ def addfiles(files_path, tablename, checksame):
                 filesfound = 0
 
                 if checksame == True:
+                    filepath_db=filepath_db.replace('"','""') # SQLite to have quotation marks in strings need to double them, need to do here as concatenate full SQLite command as a text string, no need to multiple quotation marks more below when each variable is passed separately to dbConnection.execute ('INSERT...'); P.S. to concatenate in SQLite use ||
                     c = dbConnection.execute('SELECT disk, filesize, filename, filenamenew, filepath, filetime, action, runID, sha256, sha256_start, sha256_end FROM ' + tablename + ' WHERE disk = "' + diskname + '" AND filepath = "' + filepath_db + '"') 
+                    filepath_db=filepath_db.replace('""','"') # replace back after SQLite execution
                     for row in c:
                         filesfound += 1
                         #files_size += row['filesize']

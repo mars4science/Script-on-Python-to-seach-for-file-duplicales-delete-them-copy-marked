@@ -24,7 +24,6 @@ def uprint(*objects, sep=' ', end='\n', file=sys.stdout):
 def end(startTime = None, dbConnection = None):
     if dbConnection is not None:
         dbConnection.close()
-        pass
 
     print ()
     print ('End:')
