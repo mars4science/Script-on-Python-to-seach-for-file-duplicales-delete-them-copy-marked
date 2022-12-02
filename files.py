@@ -1,12 +1,29 @@
 #!/usr/bin/python3
 
-# Python 3.5 tested
+# Python 3.8 tested
+
+__version__ = "4.5, 2022 November 30"
+
+# version 4.5, 2022 Decemeber 1
+# changed addfiles() to properly read links (even if broken), checking islink() and using lstat()
+# added version command
+# fix copymarked to copy symlinks, some minor output fix and enhancements
+# added sync command to copy files absent on a disk in db compared to other disk contents per db, copied files on destination are NOT added to db
+
+# Now two way symc reqires 4 steps (in db for both disks some files are expected to be present already):
+# dbname=;source_path=;source_disk=;dest_path=;dest_disk= # setting variabes in e.g. bash
+# files.py --db dbname --files source_path --disk source_disk --files_c dest_path --disk_c dest_disk sync
+# files.py --db dbname --files dest_path --disk dest_disk add
+# files.py --db dbname --files_c source_path --disk_c source_disk --files dest_path --disk dest_disk sync
+# files.py --db dbname --files source_path --disk source_disk add
 
 # version 4.4 2022 October 24
-# fixed check for duplicates for "add" command in case of files containing double quotation marks
 # for "copy" added exception catch when checking for existence of source/destination file and re-try reading several times (error was often due to USB malfunction)
 #   re-try not tested yet, copy function works after adding above changes
 # minor comment fix for "makedirs"
+
+# version 4.3 2022 October 17
+# fixed check for duplicates for "add" command in case of files containing double quotation marks; minor comment fix
 
 # version 4.2 2022 July 10
 # added check for disk (diskname) for "add" command
@@ -50,7 +67,7 @@
 # deletion works with --files_d parameter now, not --files
 
 # version 3.1
-# copy files from one location - (files parameter) to other (files_c parameter) for those files where action field in db is set to 'to copy' from specific disk (disk parameter)
+# copy files from one location - (files parameter) to other (files_c parameter) for those files where action field in db is set to 'tocopy' from specific disk (disk parameter)
 # TO DO - in db paths are now stored not full when reading, but only part w/out path to - so need for change code here (DONE in 3.2)
 
 # read files properties from set new and old folders, writing info into database
@@ -92,13 +109,17 @@ signal.signal(signal.SIGINT, signal_handler)
 
 import argparse
 from argparse import RawTextHelpFormatter
+
 parser = argparse.ArgumentParser(description='Process file structures, deleting dublicates renaming retained files is useful if additional info is not contained in extention - part of file name after last . symbol; paths better be passed as absolute', formatter_class=RawTextHelpFormatter)
-parser.add_argument('command', choices=['read','add', 'search','totals', 'delete', 'deletemarked', 'compareonly', 'change', 'copy', 'deletesame', 'makedirs'], help='command name: \nread - adds files in --filespath to database --db (modification date, size, sha256sum, path, name, --disk), \nadds - same as read but adds only those that are not already in --db (checks for same --disk AND path that includes name), \nsearch - outputs found files and info on them, \ntotals - outputs totals, \ndelete - deletes files in path (--files_d) against database (--db) or other path (--files) by sha256 and only if file is found on each of all disks (--disks can be several times), also --notchecktime --mne --mnb --nmn --rename optional), \ndeletemarked - deleting (and renaming) what is marked already in database (by action field set to "todelete" in files_todelete table; if need to redo deletion for another disk, please run "change" to semi-manually change action field) and --files_d is used to add to path stored in database at beginning and --disk is used to delete marked for that disk only as a safeguard, delete from temp table, rename what is in main table, \ncompareonly - run only matching procedure for two tables in database which should be filled in already, \ncopy - copy files from one location (--files) to other (--files_c) for those files where action field in database (--db) is set to "to copy" for specific --disk, \ndeletesame - delete dublicates in same location (--files_d) by filesize, sha256; also by name (exact or not, partial matching option same effect as do not match) and timestamp (exact ot not), \nmakedirs - make directories in path of files_c from filesdata entries in database')
+parser.add_argument('command', choices=['read','add', 'search','totals', 'delete', 'deletemarked', 'compareonly', 'change', 'copy', 'deletesame', 'makedirs', 'sync'], help='command name: \nread - adds files in --filespath to database --db (modification date, size, sha256sum, path, name, --disk), \nadds - same as read but adds only those that are not already in --db (checks for same --disk AND path that includes name), \nsearch - outputs found files and info on them, \ntotals - outputs totals, \ndelete - deletes files in path (--files_d) against database (--db) or other path (--files) by sha256 and only if file is found on each of all disks (--disks can be several times), also --notchecktime --mne --mnb --nmn --rename optional), \ndeletemarked - deleting (and renaming) what is marked already in database (by action field set to "todelete" in files_todelete table; if need to redo deletion for another disk, please run "change" to semi-manually change action field) and --files_d is used to add to path stored in database at beginning and --disk is used to delete marked for that disk only as a safeguard, delete from temp table, rename what is in main table, \ncompareonly - run only matching procedure for two tables in database which should be filled in already, \ncopy - copy files from one location (--files) to other (--files_c) for those files where action field in database (--db) is set to "tocopy" for specific --disk, \ndeletesame - delete dublicates in same location (--files_d) by filesize, sha256; also by name (exact or not, partial matching option same effect as do not match) and timestamp (exact ot not), \nmakedirs - make directories in path of files_c from filesdata entries in database, \nsync - add files absent on one disk/location to another disk/location and update the db, need disk,disk_c - to locate files in db, files,files_c - paths to roots of locations to copy from and copy to (paths from db are appended to them)')
+
+parser.add_argument('--version', action = 'version', version='%(prog)s version '+ __version__)
 parser.add_argument('--db', default='./temp.db', help='full path to database location, default = temp.db in current folder')
 parser.add_argument('--files', help='full path to the only/main file structure')
 parser.add_argument('--files_d', help='full path to other file structure - where objects need to be deleted')
 parser.add_argument('--files_c', help='full path to other file structure - whereto objects need to be copied for copy/or folders be created for makedirs')
-parser.add_argument('--disk', help='disk name tag of file structure info - for add, read, totals, search')
+parser.add_argument('--disk', help='disk name tag of file structure info - for add, read, totals, search, sync')
+parser.add_argument('--disk_c', help='disk name tag to copy files to, used by sync command')
 parser.add_argument('--disks', action='append', help='disk name tags when searched for candidates for deletion, if present, file should be present on all disks in main table to be considered a candidate, if omitted, should be present in main table as a whole. Should be one name per argument, several arguments possible, NOT several in one argument separated by comma')
 parser.add_argument('--pattern', help='filename expression to search, percentage sign symbol can be used as any number of any symbols, ignore case, _ symbol means any AFAIK, for exact search add --exact parameter') # symbol % in help string gives argparse error on parse_args() line
 parser.add_argument('--action', help='action text to search, usefull after processing, e.g. set to "deleted" if deleted') 
@@ -125,6 +146,7 @@ full_path_d = args.files_d
 full_path_c = args.files_c
 dblocation = args.db
 diskname = args.disk
+diskname_c = args.disk_c
 disks = args.disks
 FileNameEx = args.pattern
 filestoprocess = args.qty
@@ -158,7 +180,7 @@ if full_path != None and full_path == full_path_d:
     print ('- paths to files same: files and files_d, terminating')
     togo = False
 
-if MainAction in ['search', 'totals', 'change', 'copy', 'deletemarked', 'makedirs'] and dblocation == './temp.db':
+if MainAction in ['search', 'totals', 'change', 'copy', 'deletemarked', 'makedirs', 'sync'] and dblocation == './temp.db':
     print ('- path to database ("--db") is required for this command, if you want to use ./temp.db, please give another path version to it')
     togo = False
 
@@ -166,15 +188,15 @@ if MainAction in ['search'] and FileNameEx == None:
     print ('- search pattern ("--pattern") is required for this command')
     togo = False
 
-if MainAction in ['add', 'read', 'clean', 'copy'] and full_path == None:
+if MainAction in ['add', 'read', 'clean', 'copy', 'sync'] and full_path == None:
     print ('- path to file structure ("--files") is required for this command')
     togo = False
 
-if MainAction in ['copy', 'makedirs'] and full_path_c == None:
-    print ('- path to second file structure (whereto copy - "--files_c") is required for this command')
+if MainAction in ['copy', 'makedirs', 'sync'] and full_path_c == None:
+    print ('- path to second file structure (where to copy - "--files_c") is required for this command')
     togo = False
 
-if MainAction in ['copy', 'deletemarked', 'makedirs', 'add'] and diskname == None:
+if MainAction in ['copy', 'deletemarked', 'makedirs', 'add', 'sync'] and diskname == None:
     print ('- diskname ("--disk") is required for this command')
     togo = False
  
@@ -184,6 +206,10 @@ if MainAction in ['delete', 'deletemarked', 'deletesame'] and full_path_d == Non
 
 if MainAction in ['delete'] and not ((full_path == None) ^ (dblocation == './temp.db')): # ^ is logical xor here
     print ('- either path to file structure (--files) or database (--db) to check againt is required for this command (not both though)')
+    togo = False
+
+if MainAction in ['sync'] and diskname_c == None:
+    print ('- diskname to copy to ("--disk_c") is required for this command')
     togo = False
 
 if togo == False:
@@ -218,30 +244,18 @@ print ()
 startTime = datetime.today()
 
 # ----------------------------------------------------------------------------------------------------------------------------------------------------#
-# to copy files set to be copied (field 'action' is 'to copy') - see help for detailes
+# to copy files set to be copied (field 'action' is 'tocopy') - see help for detailes
 
-if MainAction == 'copy':
-
-    '''srcfile = '/home/alex/Documents/python/test.py'
-    dstfile = '/home/alex/Documents/python/1/1/1/12341/1hkl/1/132543243/test.py'
-
-    print (os.path.isabs(srcfile))
-    #assert os.path.isabs(srcfile)
-    dstdir =  os.path.dirname(dstfile)
-
-    os.makedirs(dstdir) # create all directories, raise an error if it already exists
-    shutil.copyfile2(srcfile, dstfile)
-
-    end(startTime, dbConnection)'''
+def copymarked():
 
     notcopiedasnotfound = 0
     notcopiedasfailed = 0
     notcopiedaswerethere = 0
     copied = 0
 
-    c = dbConnection.execute('select id, filepath from filesdata where action="to copy" AND disk = "' + diskname + '"')
+    c = dbConnection.execute('select id, filepath from filesdata where action="tocopy" AND disk = "' + diskname + '"')
     for row_c in c:
-        #print(row_c['filepath'])
+        # uprint(row_c['filepath'])
         srcfile = full_path + row_c['filepath']
         try_success = -10
         try_number = 3 # number of tries in case of IO error
@@ -249,7 +263,7 @@ if MainAction == 'copy':
 
         while try_to>0:
             try:
-                source_found=Path(srcfile).exists()
+                source_found=Path(srcfile).is_symlink() or Path(srcfile).exists()
                 try_to=try_success
             except Exception as e:
                 uprint ("(Un?)expected error when check existence of source file: " + str(e))
@@ -271,10 +285,10 @@ if MainAction == 'copy':
                 try_to = try_number
                 while try_to>0:
                     try:
-                        destination_found=Path(srcfile).exists()
+                        destination_found=Path(dstfile).is_symlink() or Path(dstfile).exists()
                         try_to=try_success
                     except Exception as e:
-                        uprint ("(Un?)expected error when check existence of source file: " + str(e))
+                        uprint ("(Un?)expected error when check existence of destination file: " + str(e))
                         uprint ("Wating several seconds and trying again...")
                         time.sleep(10)
                         try_to -= 1
@@ -283,7 +297,7 @@ if MainAction == 'copy':
                     break # for loop
                 else:
 
-                    if Path(dstfile).exists(): #.is_file()
+                    if destination_found:
                         uprint ('already there: ',dstfile)
                         notcopiedaswerethere += 1
                         d = dbConnection.execute('UPDATE filesdata SET action = "not copied as was already there" WHERE id = ' + str(row_c['id']))
@@ -294,7 +308,7 @@ if MainAction == 'copy':
                         except Exception as e:
                             pass
                         try:
-                            shutil.copy2(srcfile, dstdir)
+                            shutil.copy2(srcfile, dstdir, follow_symlinks=False)
                             copied +=1
                             d = dbConnection.execute('UPDATE filesdata SET action = "copied" WHERE id = ' + str(row_c['id']))
                         except Exception as e:
@@ -303,12 +317,16 @@ if MainAction == 'copy':
 
     dbConnection.commit()
 
-    print ('Number of files that have been copied         : {:,.0f}'.format(copied).replace(',', ' '))
+    print ('\nNumber of files that have been copied         : {:,.0f}'.format(copied).replace(',', ' '))
     print ('Number of files that have been not been found : {:,.0f}'.format(notcopiedasnotfound).replace(',', ' '))
     print ('Number of files that have been there already  : {:,.0f}'.format(notcopiedaswerethere).replace(',', ' '))
     print ('Number of files that had errors on copy       : {:,.0f}'.format(notcopiedasfailed).replace(',', ' '))
 
     end(startTime, dbConnection)
+
+
+if MainAction == 'copy':
+    copymarked()
 
 
 # ----------------------------------------------------------------------------------------------------------------------------------------------------#
@@ -711,6 +729,7 @@ def addfiles(files_path, tablename, checksame):
     processed_files = 0
     processed_dirs = 0
     partprocessed = 0
+    added_files = 0
 
     print ("Files to process: ", filestoprocess)
     print ()
@@ -737,40 +756,47 @@ def addfiles(files_path, tablename, checksame):
                         #files_size += row['filesize']
                 
                 if filesfound == 0:
-             
-                    # uprint (filepath)
-                    filesize = os.path.getsize(os.path.join(root,filename))
-                    filetime = os.path.getmtime(os.path.join(root,filename))
+#                    filesize = os.path.getsize(filepath)
+#                    filetime = os.path.getmtime(filepath)
+# changed to using lstat as code above resulted in error in case of broken symlinks 
+# (I intend to read links themselves even if not broken, not where they point)
+# lstat() stats files not following symlinks 
+# one may use stat(follow_symlinks=False) instead [per docs, ! ver 3.10+]
+                    filesize = Path(filepath).lstat().st_size
+                    filetime = Path(filepath).lstat().st_mtime
                     
-
-                    # read sha256
-                    BLOCKSIZE = 65536 # in bytes, 65536*256 ~= 16mb, * 256 increases processing time with many small files
-                    #BLOCKSIZE_start = 
-                    hasher = hashlib.sha256() #md5
-                    hasher_start = hashlib.sha256()
-                    hasher_end = hashlib.sha256()
-                    with open(filepath, 'rb') as afile:
-                        buf = afile.read(BLOCKSIZE)
-                        hasher_start.update(buf)
-                        buf_last = buf # added for case of 0 length files
-                        while len(buf) > 0:
-                            hasher.update(buf)
-                            buf_last = buf
+                    if os.path.islink(filepath):
+                        # read link and calculate sha256 of it
+                        linkname = os.readlink(filepath)
+                        sha256_temp = hashlib.sha256(linkname.encode('utf-8')).hexdigest()
+                        uprint(" - link ! ",filepath, " -> ", linkname) # just alert, links were rare
+                        sha256_start = sha256_temp
+                        sha256_end = sha256_temp
+                    else:      
+                        # read file contents and calculate sha256
+                        BLOCKSIZE = 65536 # in bytes, 65536*256 ~= 16mb, * 256 increases processing time with many small files
+                        hasher = hashlib.sha256() #md5
+                        hasher_start = hashlib.sha256()
+                        hasher_end = hashlib.sha256()
+                        with open(filepath, 'rb') as afile:
                             buf = afile.read(BLOCKSIZE)
-                    #buf_last = buf
-                    hasher_end.update(buf_last)
-                    sha256_temp = hasher.hexdigest()
-                    sha256_start = hasher_start.hexdigest()
-                    sha256_end = hasher_end.hexdigest()
-                    #print(hasher.hexdigest())
+                            hasher_start.update(buf)
+                            buf_last = buf # added for case of 0 length files
+                            while len(buf) > 0:
+                                hasher.update(buf)
+                                buf_last = buf
+                                buf = afile.read(BLOCKSIZE)
+                        #buf_last = buf
+                        hasher_end.update(buf_last)
+                        sha256_temp = hasher.hexdigest()
+                        sha256_start = hasher_start.hexdigest()
+                        sha256_end = hasher_end.hexdigest()
+                        #uprint(hasher.hexdigest())
 
-            #        filepath = filepath [len(diskMount):].replace ('/', '\\') # as paths are for stored in Windows format, need to change path format that was read in Linux
+            #        filepath = filepath [len(diskMount):].replace ('/', '\\') # as paths are for stored in Windows format, need to change path format that was read in Linux (long since changed that)
 
-                    #uprint (os.path.join(root,filename))
-                    #time.sleep (1)
-
-                    # dbConnection.execute('INSERT INTO filesdata (disk, filename, filepath, filesize, filetime) VALUES ("' + diskname + '", "' + filename + '", "' + filepath + '", ' + str(filesize) + ', ' + str(CAST(filetime AS INTEGER)) + ')')
                     dbConnection.execute('INSERT INTO ' + tablename + ' (disk, filename, filepath, filesize, filetime, sha256, sha256_start, sha256_end) VALUES (?,?,?,?, CAST(? AS INTEGER),?,?,?)', (diskname, filename, filepath_db, filesize, filetime, sha256_temp, sha256_start, sha256_end))
+                    added_files += 1
 
                 #dbConnection.commit()
 
@@ -789,9 +815,11 @@ def addfiles(files_path, tablename, checksame):
                 uprint ("(Un?)expected error: " + str(e))
 
     dbConnection.commit()
-    print ('Number of folders that have been read : {:,.0f}'.format(processed_dirs).replace(',', ' '))
-    print ('Number of files   that have been read : {:,.0f}'.format(processed_files).replace(',', ' '))
-    print ('Sum    of objects that have been read : {:,.0f}'.format(processed_dirs + processed_files).replace(',', ' '))
+
+    print ('\nNumber of files   that have been added : {:,.0f}'.format(added_files).replace(',', ' '))        
+    print ('Number of files   that have been read  : {:,.0f}'.format(processed_files).replace(',', ' '))
+    print ('Number of folders that have been read  : {:,.0f}'.format(processed_dirs).replace(',', ' '))
+    print ('Sum    of objects that have been read  : {:,.0f}'.format(processed_dirs + processed_files).replace(',', ' '))
     #end(startTime, dbConnection)
 
 
@@ -871,7 +899,6 @@ if MainAction == 'compareonly':
     print ()
     end(startTime, dbConnection)
 
-
 # ----------------------------------------------------------------------------------------------------------------------------------------------------#
 #
 # compare entries in database tables (made from files in folders)
@@ -940,8 +967,6 @@ def markdublicates (tablemain):
     print ('Recommended for name change: ', "{:,.0f}".format(recommendedNameChange).replace(",", " "))
     #end(startTime, dbConnection)
 
-
-
 # ----------------------------------------------------------------------------------------------------------------------------------------------------
 #
 # delete extra/dublicates files in path if same file is found in the same path
@@ -967,6 +992,38 @@ if MainAction == 'deletesame':
 
     end(startTime, dbConnection)
 
+# ----------------------------------------------------------------------------------------------------------------------------------------------------
+#
+# sync two locations, update db
+
+if MainAction == 'sync':
+
+# trying to make queries safe against injection attack, %s for MySQL and Postgre, ? for SQLite (for SQLite table name substition with ? resulted in error)
+    c = dbConnection.execute('UPDATE "' + tablename_main + '" set action=null where action="tocopy" AND disk = ?', (diskname,))
+    c = dbConnection.execute('UPDATE "' + tablename_main + '" set action="tocopy" where id not in (select DISTINCT a.id from "' + tablename_main + '" as a join "' + tablename_main + '" as b on a.filepath=b.filepath where a.sha256=b.sha256 and a.disk=? and b.disk=?) and disk=?', (diskname,diskname_c,diskname,))
+    dbConnection.commit()
+
+    copymarked()
+
+    end(startTime, dbConnection)
+
+
+
+    c = dbConnection.execute('INSERT INTO ' + tablename + ' (disk, filename, filepath, filesize, filetime, sha256, sha256_start, sha256_end) VALUES (?,?,?,?, CAST(? AS INTEGER),?,?,?)', (diskname, filename, filepath_db, filesize, filetime, sha256_temp, sha256_start, sha256_end))
+
+
+    c = dbConnection.execute('select * from filesdata where id not in (select DISTINCT a.id from filesdata as a join filesdata as b on a.filepath=b.filepath where a.sha256=b.sha256 and a.disk="10tb_green" and b.disk="10tb_blue") and disk="10tb_green" and filepath like "/%"')
+
+    c = dbConnection.execute('select id, filepath from filesdata where disk = "' + diskname + '"')
+    for row_c in c:
+        dstfile = full_path_c + row_c['filepath']
+        dstdir =  os.path.dirname(dstfile)
+        try:
+            os.makedirs(dstdir) # create all directories, raise an error if it already exists
+        except Exception as e:
+            pass
+
+    end(startTime, dbConnection)
 
 # ----------------------------------------------------------------------------------------------------------------------------------------------------
 #
@@ -994,5 +1051,17 @@ if MainAction == 'deletesame':
 #for name in res:
 #    print name[0]
 
+
+    '''srcfile = '/home/alex/Documents/python/test.py'
+    dstfile = '/home/alex/Documents/python/1/1/1/12341/1hkl/1/132543243/test.py'
+
+    print (os.path.isabs(srcfile))
+    #assert os.path.isabs(srcfile)
+    dstdir =  os.path.dirname(dstfile)
+
+    os.makedirs(dstdir) # create all directories, raise an error if it already exists
+    shutil.copyfile2(srcfile, dstfile)
+
+    end(startTime, dbConnection)'''
 
 
