@@ -1,0 +1,69 @@
+
+# version 5.1, 2022 Decemeber 2
+# moved checks for existence of paths and disks in db from functions to checks at the beginning
+# added for copymarked function reading quantity of files to copy and progress output
+
+# version 5.0, 2022 Decemeber 2
+# added sync2 to sync both ways, for that changed code - added disk variable to addfiles function
+# sync now adds new files to db at the end
+# output (print) formatting enhancements
+
+# version 4.5, 2022 Decemeber 1
+# changed addfiles() to properly read links (even if broken), checking islink() and using lstat()
+# added version command
+# fix copymarked to copy symlinks, some minor output fix and enhancements
+# added sync command to copy files absent on a disk in db compared to other disk contents per db, copied files on destination are NOT added to db
+
+# version 4.4 2022 October 24
+# for "copy" added exception catch when checking for existence of source/destination file and re-try reading several times (error was often due to USB malfunction)
+#   re-try not tested yet, copy function works after adding above changes
+# minor comment fix for "makedirs"
+
+# version 4.3 2022 October 17
+# fixed check for duplicates for "add" command in case of files containing double quotation marks; minor comment fix
+
+# version 4.2 2022 July 10
+# added check for disk (diskname) for "add" command
+
+# version 4.1 2022 May 15
+# added add command - read directory similar to read but check if filepath already in db, if so skip
+# added add_index_db_table_filepath to make index to search faster for add command and renamed add_index_db_table to add_index_db_table_sha256
+# added signal_handler to commit changes to db on ctrl-C press
+
+# version 4.0 2021 April 11
+# added makedirs command - create empty directory structure from database entries, see help for more info
+
+# version 3.9 2021 March 31
+# added add_index_db_table to files_functions.py module and call it here to speed up comparing entries about 1000 (1k) times in case of large data sets
+
+# version 3.8 2021 march 23
+# fixed error on checktime, which was false always, changed to canonic way per https://stackoverflow.com/questions/15008758/parsing-boolean-values-with-argparse 
+
+# version 3.7
+# fixed checktime error: effect was opposite of planned, added "not" to 
+# checkTime = not (args.notchecktime or args.notmatchtime)
+# strage how I did not see it before...maybe if flipped on some version
+
+# version 3.6 / 2021 March
+# added --notmarchtime, changed/added some comments
+# changed deletesame to work with files_d and tablename_temp instead of files and tablename_main (would be easier to use db after for deletemarked as would use same table)
+
+# version 3.5 / 2021 Feb
+# implemented search for action filled-in during previous runs (--action)
+
+# version 3.4 / 2021 Jan
+# implemented command deletesame - delete duplicates in same location (--files) by filesize, sha256; also by name (exact or not, partial matching option same effect as do not match) and timestamp (exact ot not)
+
+# version 3.3
+# delete works with db and now also other pata
+# TO DO test renaming function
+
+# version 3.2 
+# deletemarked function is changed to need diskname (default diskname stored when not supplied during reading is "temp" and it is set automatically to that for deletesame) as a safeguard and to work with partial path from database adding files_d parameter at beginning for path;
+# all functions changed to use partial paths - excluding path to whole structure, w/out leading /, so it is expected to supply paths ending with / for commands like "deletemarked")
+# deletion works with --files_d parameter now, not --files
+
+# version 3.1
+# copy files from one location - (files parameter) to other (files_c parameter) for those files where action field in db is set to 'tocopy' from specific disk (disk parameter)
+# TO DO - in db paths are now stored not full when reading, but only part w/out path to - so need for change code here (DONE in 3.2)
+

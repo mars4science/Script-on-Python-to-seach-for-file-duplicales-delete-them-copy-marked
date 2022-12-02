@@ -1,78 +1,16 @@
 #!/usr/bin/python3
 
 # Python 3.8 tested
+__version__ = "5.1, 2022 December 2"
 
-__version__ = "5.0, 2022 November 30"
-
-# version 5.0, 2022 Decemeber 2
-# added sync2 to sync both ways, for that changed code - added disk variable to addfiles function
-# sync now adds new files to db at the end
-# output (print) formalling enhancements
-
-# version 4.5, 2022 Decemeber 1
-# changed addfiles() to properly read links (even if broken), checking islink() and using lstat()
-# added version command
-# fix copymarked to copy symlinks, some minor output fix and enhancements
-# added sync command to copy files absent on a disk in db compared to other disk contents per db, copied files on destination are NOT added to db
-
-# version 4.4 2022 October 24
-# for "copy" added exception catch when checking for existence of source/destination file and re-try reading several times (error was often due to USB malfunction)
-#   re-try not tested yet, copy function works after adding above changes
-# minor comment fix for "makedirs"
-
-# version 4.3 2022 October 17
-# fixed check for duplicates for "add" command in case of files containing double quotation marks; minor comment fix
-
-# version 4.2 2022 July 10
-# added check for disk (diskname) for "add" command
-
-# version 4.1 2022 May 15
-# added add command - read directory similar to read but check if filepath already in db, if so skip
-# added add_index_db_table_filepath to make index to search faster for add command and renamed add_index_db_table to add_index_db_table_sha256
-# added signal_handler to commit changes to db on ctrl-C press
-
-# version 4.0 2021 April 11
-# added makedirs command - create empty directory structure from database entries, see help for more info
-
-# version 3.9 2021 March 31
-# added add_index_db_table to files_functions.py module and call it here to speed up comparing entries about 1000 (1k) times in case of large data sets
-
-# version 3.8 2021 march 23
-# fixed error on checktime, which was false always, changed to canonic way per https://stackoverflow.com/questions/15008758/parsing-boolean-values-with-argparse 
-
-# version 3.7
-# fixed checktime error: effect was opposite of planned, added "not" to 
-# checkTime = not (args.notchecktime or args.notmatchtime)
-# strage how I did not see it before...maybe if flipped on some version
-
-# version 3.6 / 2021 March
-# added --notmarchtime, changed/added some comments
-# changed deletesame to work with files_d and tablename_temp instead of files and tablename_main (would be easier to use db after for deletemarked as would use same table)
-
-# version 3.5 / 2021 Feb
-# implemented search for action filled-in during previous runs (--action)
-
-# version 3.4 / 2021 Jan
-# implemented command deletesame - delete duplicates in same location (--files) by filesize, sha256; also by name (exact or not, partial matching option same effect as do not match) and timestamp (exact ot not)
-
-# version 3.3
-# delete works with db and now also other pata
-# TO DO test renaming function
-
-# version 3.2 
-# deletemarked function is changed to need diskname (default diskname stored when not supplied during reading is "temp" and it is set automatically to that for deletesame) as a safeguard and to work with partial path from database adding files_d parameter at beginning for path;
-# all functions changed to use partial paths - excluding path to whole structure, w/out leading /, so it is expected to supply paths ending with / for commands like "deletemarked")
-# deletion works with --files_d parameter now, not --files
-
-# version 3.1
-# copy files from one location - (files parameter) to other (files_c parameter) for those files where action field in db is set to 'tocopy' from specific disk (disk parameter)
-# TO DO - in db paths are now stored not full when reading, but only part w/out path to - so need for change code here (DONE in 3.2)
-
-# read files properties from set new and old folders, writing info into database
-# looks through files in one folder and searches for files with same (or similar) name, size, hash sha256 and modification date in other folder, if same file found script can delete file in first or second folder.
-# reads db with file properties for information search and totals
+# Short summary:
+# Read files stats + checksum to database
+# Identifies duplicate files (TO DO for whole folders)
+# Sync folders using stored files stats
+# Other commands, see --help, some details might be in changelog
 
 # TO DO:
+# 0. code to identify duplicate folders as many software folders contain some of same files, delete only if whole folder matches
 # 1. notUsefulEnd - change from list of items [] to any combination of items from list
 # 2. implement deleting directly location against location - DONE ver 3.3
 # 3. test on deleting from path which contained in database - duplicates inside one location, not one against the other
@@ -95,18 +33,17 @@ import codecs
 import hashlib
 import platform
 import shutil
-import signal
 
+import signal
 def signal_handler(sig,frame):
     print("Seems like Ctrl-C pressed, commiting changes to db")  
     dbConnection.commit()
     sys.exit(0)
-
 signal.signal(signal.SIGINT, signal_handler)
-#from argparse import ArgumentParser
 
 import argparse
 from argparse import RawTextHelpFormatter
+#from argparse import ArgumentParser
 
 parser = argparse.ArgumentParser(description='Process file structures, deleting duplicates renaming retained files is useful if additional info is not contained in extention - part of file name after last . symbol; paths better be passed as absolute', formatter_class=RawTextHelpFormatter)
 parser.add_argument('command', choices=['read','add', 'search','totals', 'delete', 'deletemarked', 'compareonly', 'change', 'copy', 'deletesame', 'makedirs', 'sync', 'sync2'], help='command name: \nread - adds files in --filespath to database --db (modification date, size, sha256sum, path, name, --disk), \nadds - same as read but adds only those that are not already in --db (checks for same --disk AND path that includes name), \nsearch - outputs found files and info on them, \ntotals - outputs totals, \ndelete - deletes files in path (--files_d) against database (--db) or other path (--files) by sha256 and only if file is found on each of all disks (--disks can be several times), also --notchecktime --mne --mnb --nmn --rename optional), \ndeletemarked - deleting (and renaming) what is marked already in database (by action field set to "todelete" in files_todelete table; if need to redo deletion for another disk, please run "change" to semi-manually change action field) and --files_d is used to add to path stored in database at beginning and --disk is used to delete marked for that disk only as a safeguard, delete from temp table, rename what is in main table, \ncompareonly - run only matching procedure for two tables in database which should be filled in already, \ncopy - copy files from one location (--files) to other (--files_c) for those files where action field in database (--db) is set to "tocopy" for specific --disk, \ndeletesame - delete duplicates in same location (--files_d) by filesize, sha256; also by name (exact or not, partial matching option same effect as do not match) and timestamp (exact ot not), \nmakedirs - make directories in path of files_c from filesdata entries in database, \nsync - add files absent on one disk/location to another disk/location and update the db, need disk, disk_c - to locate files in db, files, files_c - paths to roots of locations to copy from and copy to (paths from db are appended to them), \nsync2 - same as sync but do both ways, from files to files_c then from files_c to files')
@@ -116,8 +53,8 @@ parser.add_argument('--db', default='./temp.db', help='full path to database loc
 parser.add_argument('--files', help='full path to the only/main file structure')
 parser.add_argument('--files_d', help='full path to other file structure - where objects need to be deleted')
 parser.add_argument('--files_c', help='full path to other file structure - whereto objects need to be copied for copy/or folders be created for makedirs')
-parser.add_argument('--disk', help='disk name tag of file structure info - for add, read, totals, search, sync')
-parser.add_argument('--disk_c', help='disk name tag to copy files to, used by sync command')
+parser.add_argument('--disk', help='disk name tag of file structure info - for add, read, totals, search, sync, sync2')
+parser.add_argument('--disk_c', help='disk name tag to copy files to, used by sync, sync2 commands')
 parser.add_argument('--disks', action='append', help='disk name tags when searched for candidates for deletion, if present, file should be present on all disks in main table to be considered a candidate, if omitted, should be present in main table as a whole. Should be one name per argument, several arguments possible, NOT several in one argument separated by comma')
 parser.add_argument('--pattern', help='filename expression to search, percentage sign symbol can be used as any number of any symbols, ignore case, _ symbol means any AFAIK, for exact search add --exact parameter') # symbol % in help string gives argparse error on parse_args() line
 parser.add_argument('--action', help='action text to search, usefull after processing, e.g. set to "deleted" if deleted') 
@@ -175,11 +112,15 @@ if MainAction in ['delete', 'deletesame']:
 togo = True
 
 if full_path != None and full_path == full_path_d:
-    print ('- paths to files same: files and files_d, terminating')
+    print ('- paths to files same: --files and --files_d, terminating.\n To delete in same location: deletesame command with only --files_d.')
     togo = False
 
-if MainAction in ['search', 'totals', 'change', 'copy', 'deletemarked', 'makedirs', 'sync', 'sync'] and dblocation == './temp.db':
+if MainAction in ['add', 'search', 'totals', 'change', 'copy', 'deletemarked', 'makedirs', 'sync', 'sync2'] and dblocation == './temp.db':
     print ('- path to database ("--db") is required for this command, if you want to use ./temp.db, please give another path version to it')
+    togo = False
+
+if MainAction in ['add', 'search', 'totals', 'change', 'copy', 'deletemarked', 'makedirs', 'sync', 'sync2'] and not Path(dblocation).exists():
+    print ("- path --db '%s' not found, typo?" % dblocation)
     togo = False
 
 if MainAction in ['search'] and FileNameEx == None:
@@ -190,11 +131,11 @@ if MainAction in ['add', 'read', 'clean', 'copy', 'sync', 'sync2'] and full_path
     print ('- path to file structure ("--files") is required for this command')
     togo = False
 
-if MainAction in ['copy', 'makedirs', 'sync', 'sync'] and full_path_c == None:
+if MainAction in ['copy', 'makedirs', 'sync', 'sync2'] and full_path_c == None:
     print ('- path to second file structure (where to copy - "--files_c") is required for this command')
     togo = False
 
-if MainAction in ['copy', 'deletemarked', 'makedirs', 'add', 'sync', 'sync'] and diskname == None:
+if MainAction in ['copy', 'deletemarked', 'makedirs', 'add', 'sync', 'sync2'] and diskname == None:
     print ('- diskname ("--disk") is required for this command')
     togo = False
  
@@ -210,9 +151,21 @@ if MainAction in ['sync', 'sync'] and diskname_c == None:
     print ('- diskname to copy to ("--disk_c") is required for this command')
     togo = False
 
+if full_path != None and not Path(full_path).exists():
+    uprint(" --full_path '%s' not found, typo?" % full_path)
+    togo = False
+
+if full_path_c != None and not Path(full_path_c).exists():
+    uprint(" --full_path_c '%s' not found, typo?" % full_path_c)
+    togo = False
+
+if full_path_d != None and not Path(full_path_d).exists():
+    uprint(" --full_path_d '%s' not found, typo?" % full_path_d)
+    togo = False
+
 if togo == False:
     print ('Next run please take into account remarks listed above') 
-    end()
+    exit (1)
 
 tablename_main = 'filesdata'
 tablename_temp = 'filesdata_todelete'
@@ -240,17 +193,40 @@ print (datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
 print ()
 startTime = datetime.today()
 
+if MainAction in ['add', 'copy', 'deletemarked', 'makedirs', 'add', 'sync', 'sync2']:
+    row = dbConnection.execute('SELECT * FROM ' + tablename_main + ' WHERE disk = "' + diskname + '" limit 1').fetchone()
+    if row == None:
+        uprint("--disk '%s' not found in db '%s', terminating...\n" % (diskname,dblocation))
+        end(startTime, dbConnection)
+
+if MainAction in ['sync', 'sync']:
+    row = dbConnection.execute('SELECT * FROM ' + tablename_main + ' WHERE disk = "' + diskname_c + '" limit 1').fetchone()
+    if row == None:
+        uprint("--disk '%s' not found in db '%s', terminating...\n" % (diskname_c,dblocation))
+        end(startTime, dbConnection)
+
 # ----------------------------------------------------------------------------------------------------------------------------------------------------#
 # to copy files set to be copied (field 'action' is 'tocopy') - see help for detailes
 
 def copymarked(disk_name, source_path, dest_path):
 
-    uprint("----- copying files marked 'tocopy' in 'action' field for disk '" + disk_name + "' from '" + source_path + "' to '" + dest_path  + "' -----" )    
+    uprint("----- copying files marked 'tocopy' in 'action' field for disk '" + disk_name + "' from '" + source_path + "' to '" + dest_path  + "' -----\n" )
 
     notcopiedasnotfound = 0
     notcopiedasfailed = 0
     notcopiedaswerethere = 0
     copied = 0
+
+    # c = dbConnection.execute('select id, filepath from "' + tablename_main + '" where action="tocopy" AND disk = "' + disk_name + '"')
+    # c.rowcount gave -1, so need another way
+    c = dbConnection.execute('select count(*) as qty from "' + tablename_main + '" where action="tocopy" AND disk = "' + disk_name + '"')
+    row = c.fetchone()
+    filestoprocess = row['qty']
+
+    processed = 0
+    partprocessed = 0
+    print ("Files to process: ", filestoprocess)
+    print ()
 
     c = dbConnection.execute('select id, filepath from "' + tablename_main + '" where action="tocopy" AND disk = "' + disk_name + '"')
     for row_c in c:
@@ -314,9 +290,16 @@ def copymarked(disk_name, source_path, dest_path):
                             notcopiedasfailed +=1
                             d = dbConnection.execute('UPDATE "' + tablename_main + '" SET action = "not copied as copy failed" WHERE id = ' + str(row_c['id']))
 
+        processed += 1
+        if (processed / filestoprocess) > (partprocessed / qtyofparts):
+            partprocessed += 1
+            print (strftime("%Y-%m-%d %H:%M:%S", localtime()))
+            print ('part ', partprocessed, ' of ', qtyofparts, ' current item number ', processed, ' copied: ', copied)
+            print ()
+
     dbConnection.commit()
 
-    print ('\nNumber of files that have been copied         : {:,.0f}'.format(copied).replace(',', ' '))
+    print ('Number of files that have been copied         : {:,.0f}'.format(copied).replace(',', ' '))
     print ('Number of files that have been not been found : {:,.0f}'.format(notcopiedasnotfound).replace(',', ' '))
     print ('Number of files that have been there already  : {:,.0f}'.format(notcopiedaswerethere).replace(',', ' '))
     print ('Number of files that had errors on copy       : {:,.0f}'.format(notcopiedasfailed).replace(',', ' '))
@@ -731,6 +714,7 @@ def addfiles(disk_name, files_path, tablename, checksame):
     uprint("----- adding files from '" + files_path + "' for disk '" + disk_name + "' -----\n" )  
     # use to make tables in new database'
     make_db_table (dbConnection, tablename)
+
     if checksame == True:
         add_index_db_table_filepath (dbConnection, tablename)
 
@@ -1006,8 +990,10 @@ if MainAction == 'deletesame':
 def sync_one_way(source_path, source_disk, dest_path, dest_disk):
 
     uprint("----- sync from '" + source_path + "' to '" + dest_path + "' -----\n")
+    uprint("updating table  '" + tablename_main + "' setting action='tocopy' for files present in source but absent in destination (not same full path and checksum)\n")
 
     # trying to make queries safe against injection attack, %s for MySQL and Postgre, ? for SQLite (for SQLite table name substition with ? resulted in error)
+
     c = dbConnection.execute('UPDATE "' + tablename_main + '" set action=null where action="tocopy" AND disk = ?', (source_disk,))
     c = dbConnection.execute('UPDATE "' + tablename_main + '" set action="tocopy" where id not in (select DISTINCT a.id from "' + tablename_main + '" as a join "' + tablename_main + '" as b on a.filepath=b.filepath where a.sha256=b.sha256 and a.disk=? and b.disk=?) and disk=?', (source_disk,dest_disk,source_disk,))
     dbConnection.commit()
@@ -1015,10 +1001,26 @@ def sync_one_way(source_path, source_disk, dest_path, dest_disk):
     copymarked(source_disk,source_path,dest_path)
     addfiles(dest_disk, dest_path, tablename_main, True)
 
+    uprint("Checking correctness of copy...")
+    c = dbConnection.execute('UPDATE "' + tablename_main + '" set action="copied_wrong_sha" where id not in (select DISTINCT a.id from "' + tablename_main + '" as a join "' + tablename_main + '" as b on a.filepath=b.filepath where a.sha256=b.sha256 and a.disk=? and b.disk=?) and disk=? and action="copied"', (source_disk,dest_disk,source_disk,))
+    dbConnection.commit()
+
+    c = dbConnection.execute('select count(*) as qty_found_errors from "' + tablename_main + '" where action="copied_wrong_sha" AND disk = ?',(source_disk,))
+    row = c.fetchone()
+    qty_err = row['qty_found_errors']
+    if qty_err == 0:
+        uprint("No errors found\n")
+    else:
+        uprint(" ! Number of found errors : {:,.0f}".format(qty_err).replace(',', ' '))
+        uprint("To see: database, entries with 'copied_wrong_sha' in action field.\n")
+
+
 # assumes initial read of new files for source_disk
 def sync_two_ways(path1, disk1, path2, disk2):
     sync_one_way(path1, disk1, path2, disk2)
     sync_one_way(path2, disk2, path1, disk1)
+
+# ----- #
 
 # sync two ways
 if MainAction == 'sync2':

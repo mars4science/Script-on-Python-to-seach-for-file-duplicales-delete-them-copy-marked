@@ -25,7 +25,6 @@ def end(startTime = None, dbConnection = None):
     if dbConnection is not None:
         dbConnection.close()
 
-    print ()
     print ('End:')
     print (datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"))
     print ()
