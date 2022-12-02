@@ -147,7 +147,7 @@ if MainAction in ['delete'] and not ((full_path == None) ^ (dblocation == './tem
     print ('- either path to file structure (--files) or database (--db) to check againt is required for this command (not both though)')
     togo = False
 
-if MainAction in ['sync', 'sync'] and diskname_c == None:
+if MainAction in ['sync', 'sync2'] and diskname_c == None:
     print ('- diskname to copy to ("--disk_c") is required for this command')
     togo = False
 
@@ -199,7 +199,7 @@ if MainAction in ['add', 'copy', 'deletemarked', 'makedirs', 'add', 'sync', 'syn
         uprint("--disk '%s' not found in db '%s', terminating...\n" % (diskname,dblocation))
         end(startTime, dbConnection)
 
-if MainAction in ['sync', 'sync']:
+if MainAction in ['sync', 'sync2']:
     row = dbConnection.execute('SELECT * FROM ' + tablename_main + ' WHERE disk = "' + diskname_c + '" limit 1').fetchone()
     if row == None:
         uprint("--disk '%s' not found in db '%s', terminating...\n" % (diskname_c,dblocation))
