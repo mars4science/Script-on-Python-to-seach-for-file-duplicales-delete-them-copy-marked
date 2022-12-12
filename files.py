@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
-# Python 3.8 tested
 __version__ = "5.1, 2022 December 2"
+# Python 3.8 tested
 
 # Short summary:
 # Read files stats + checksum to database
