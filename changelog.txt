@@ -1,3 +1,6 @@
+# version 5.2, 2023 January 4
+# fix checking for disk parameter for read command
+# added removal of traling / from paths supplied as parameters to ensure consistency
 
 # version 5.1, 2022 Decemeber 2
 # moved checks for existence of paths and disks in db from functions to checks at the beginning

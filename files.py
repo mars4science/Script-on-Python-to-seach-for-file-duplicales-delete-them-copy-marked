@@ -1,7 +1,8 @@
 #!/usr/bin/python3
 
-__version__ = "5.1, 2022 December 2"
-# Python 3.8 tested
+__version__ = "5.2, 2023 January 4"
+# Python 3.8, Linux Mint 20.2/21 tested
+# Only some earlier versions IIRC were run on Windows, it might still work or require minor changes to paths (/ vs \).
 
 # Short summary:
 # Read files stats + checksum to database
@@ -111,6 +112,16 @@ if MainAction in ['delete', 'deletesame']:
 #end()
 togo = True
 
+# when path is copied from Nemo (ctrl-l) it is w/out trailing /, when typed in bash using tab for completion it is with /
+# code stores part of path excluding paths starting locations in parameters, to ensure consistenty store with leading /
+# remove trailing / if was in parameters
+if full_path != None and full_path[-1:] == "/":
+    full_path = full_path[:-1]
+if full_path_d != None and full_path_d[-1:] == "/":
+    full_path_d = full_path_d[:-1]
+if full_path_c != None and full_path_c[-1:] == "/":
+    full_path_c = full_path_c[:-1]
+
 if full_path != None and full_path == full_path_d:
     print ('- paths to files same: --files and --files_d, terminating.\n To delete in same location: deletesame command with only --files_d.')
     togo = False
@@ -135,7 +146,7 @@ if MainAction in ['copy', 'makedirs', 'sync', 'sync2'] and full_path_c == None:
     print ('- path to second file structure (where to copy - "--files_c") is required for this command')
     togo = False
 
-if MainAction in ['copy', 'deletemarked', 'makedirs', 'add', 'sync', 'sync2'] and diskname == None:
+if MainAction in ['read', 'copy', 'deletemarked', 'makedirs', 'add', 'sync', 'sync2'] and diskname == None:
     print ('- diskname ("--disk") is required for this command')
     togo = False
  
