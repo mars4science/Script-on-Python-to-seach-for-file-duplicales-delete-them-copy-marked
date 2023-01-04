@@ -1,9 +1,12 @@
 ﻿### Python script files.py for identifying duplicates of files, removing them and some other tasks on folders with files.
 #### files_functions.py includes some functions used by files.py
 
-#### Copyright (c) 2009-present, Alex Martianov. All rights reserved. 
+##### Copyright (c) 2009-2023, Alex Martian. All rights reserved.
 
 #### Licences: GNU GPL 2.0, GNU GPL 3.0.
+
+Python 3.8, Linux Mint 20.2/21 tested
+Only some earlier versions IIRC were run on Windows, it might still work or require at least minor changes to paths (/ vs \).
 
 ##### Below is output of `./files.py --help` as pasted unformatted into text editor (might look better as bash output in terminal):
 
