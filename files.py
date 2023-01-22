@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-__version__ = "5.2, 2023 January 4"
+__version__ = "5.3, 2023 January 21"
 # Python 3.8, Linux Mint 20.2/21 tested
 # Only some earlier versions IIRC were run on Windows, it might still work or require minor changes to paths (/ vs \).
 
@@ -9,9 +9,10 @@ __version__ = "5.2, 2023 January 4"
 # Identifies duplicate files (TO DO for whole folders)
 # Sync folders using stored files stats
 # Other commands, see --help, some details might be in changelog
+# SQL code is not safe against injections, folders names are not expected to contain double quotation symbols
 
 # TO DO:
-# 0. code to identify duplicate folders as many software folders contain some of same files, delete only if whole folder matches
+# 0. code to identify duplicate folders as many software folders contain some of same files, delete only if whole folder matches - DONE ver 5.3
 # 1. notUsefulEnd - change from list of items [] to any combination of items from list
 # 2. implement deleting directly location against location - DONE ver 3.3
 # 3. test on deleting from path which contained in database - duplicates inside one location, not one against the other
@@ -47,28 +48,30 @@ from argparse import RawTextHelpFormatter
 #from argparse import ArgumentParser
 
 parser = argparse.ArgumentParser(description='Process file structures, deleting duplicates renaming retained files is useful if additional info is not contained in extention - part of file name after last . symbol; paths better be passed as absolute', formatter_class=RawTextHelpFormatter)
-parser.add_argument('command', choices=['read','add', 'search','totals', 'delete', 'deletemarked', 'compareonly', 'change', 'copy', 'deletesame', 'makedirs', 'sync', 'sync2'], help='command name: \nread - adds files in --filespath to database --db (modification date, size, sha256sum, path, name, --disk), \nadds - same as read but adds only those that are not already in --db (checks for same --disk AND path that includes name), \nsearch - outputs found files and info on them, \ntotals - outputs totals, \ndelete - deletes files in path (--files_d) against database (--db) or other path (--files) by sha256 and only if file is found on each of all disks (--disks can be several times), also --notchecktime --mne --mnb --nmn --rename optional), \ndeletemarked - deleting (and renaming) what is marked already in database (by action field set to "todelete" in files_todelete table; if need to redo deletion for another disk, please run "change" to semi-manually change action field) and --files_d is used to add to path stored in database at beginning and --disk is used to delete marked for that disk only as a safeguard, delete from temp table, rename what is in main table, \ncompareonly - run only matching procedure for two tables in database which should be filled in already, \ncopy - copy files from one location (--files) to other (--files_c) for those files where action field in database (--db) is set to "tocopy" for specific --disk, \ndeletesame - delete duplicates in same location (--files_d) by filesize, sha256; also by name (exact or not, partial matching option same effect as do not match) and timestamp (exact ot not), \nmakedirs - make directories in path of files_c from filesdata entries in database, \nsync - add files absent on one disk/location to another disk/location and update the db, need disk, disk_c - to locate files in db, files, files_c - paths to roots of locations to copy from and copy to (paths from db are appended to them), \nsync2 - same as sync but do both ways, from files to files_c then from files_c to files')
+parser.add_argument('command', choices=['read','add', 'search','totals', 'delete', 'deletemarked', 'compareonly', 'change', 'copy', 'deletesame', 'makedirs', 'sync', 'sync2', 'deletefolders'], help='command name: \nread - adds files in --filespath to database --db (modification date, size, sha256sum, path, name, --disk), \nadds - same as read but adds only those that are not already in --db (checks for same --disk AND path that includes name), \nsearch - outputs found files and info on them, \ntotals - outputs totals, \ndelete - deletes files in path (--files_d) against database (--db) or other path (--files) by file sha256, name, size and modification time and only if file is found on each of all disks (--disks can be several times), also --notchecktime --mne --mnb --nmn --rename (optional), \ndeletemarked - deleting (and renaming) what is marked already in database (by action field set to "todelete" in files_todelete table; if need to redo deletion for another disk, please run "change" to semi-manually change action field) and --files_d is used to add to path stored in database at beginning and --disk is used to delete marked for that disk only as a safeguard, delete from temp table, rename what is in main table, \ncompareonly - run only matching procedure for two tables in database which should be filled in already, \ncopy - copy files from one location (--files) to other (--files_c) for those files where action field in database (--db) is set to "tocopy" for specific --disk, \ndeletesame - delete duplicates in same location (--files_d) by filesize, sha256; also by name (exact or not, partial matching option same effect as do not match) and timestamp (exact ot not), \nmakedirs - make directories in path of files_c from filesdata entries in database, \nsync - add files absent on one disk/location to another disk/location and update the db, need disk, disk_c - to locate files in db, files, files_c - paths to roots of locations to copy from and copy to (paths from db are appended to them), \nsync2 - same as sync but do both ways, from files to files_c then from files_c to files, \ndeletefolders - delete top level folder(s) recursively in provided --files_d path if complete matched folders contents are found in database (--db) or other path (--files) by file sha256, name, size and modification time and only if file is found on each of all disks (--disks can be several times), also --notchecktime (optional)')
 
 parser.add_argument('--version', action = 'version', version='%(prog)s version '+ __version__)
+parser.add_argument('--verbose', action='store_true', dest='verbose', help='output additional info, default: no output')
+parser.set_defaults(verbose=False)
 parser.add_argument('--db', default='./temp.db', help='full path to database location, default = temp.db in current folder')
 parser.add_argument('--files', help='full path to the only/main file structure')
 parser.add_argument('--files_d', help='full path to other file structure - where objects need to be deleted')
 parser.add_argument('--files_c', help='full path to other file structure - whereto objects need to be copied for copy/or folders be created for makedirs')
 parser.add_argument('--disk', help='disk name tag of file structure info - for add, read, totals, search, sync, sync2')
 parser.add_argument('--disk_c', help='disk name tag to copy files to, used by sync, sync2 commands')
-parser.add_argument('--disks', action='append', help='disk name tags when searched for candidates for deletion, if present, file should be present on all disks in main table to be considered a candidate, if omitted, should be present in main table as a whole. Should be one name per argument, several arguments possible, NOT several in one argument separated by comma')
+parser.add_argument('--disks', action='append', help='disk name tags when searched for candidates for deletion against database, if present, file should be present on all disks in main table to be considered a candidate, if omitted, should be present in main table as a whole. Should be one name per argument, several arguments possible, NOT several in one argument separated by comma')
 parser.add_argument('--pattern', help='filename expression to search, percentage sign symbol can be used as any number of any symbols, ignore case, _ symbol means any AFAIK, for exact search add --exact parameter') # symbol % in help string gives argparse error on parse_args() line
 parser.add_argument('--action', help='action text to search, usefull after processing, e.g. set to "deleted" if deleted') 
 
-parser.add_argument('--notchecktime', action='store_false', dest='checkTime', help='when looking for duplicates, do not check that timestamp (modification time) is the same, default = check time')
+parser.add_argument('--notchecktime', action='store_false', dest='checkTime', help='when looking for duplicates, do not check that timestamp (modification time) is the same, default: check time')
 parser.add_argument('--notmatchtime', action='store_false', dest='checkTime', help='when looking for duplicates, do not check that timestamp (modification time) is the same, default = check time, same effect as notchecktime')
 parser.set_defaults(checkTime=True)
 parser.add_argument('--mne', dest='filenamematchway', action='store_const', const='matchfilenamesexactly', default = 'matchfilenamesexactly', help='when looking for duplicates, to match file names exactly, this is default')
 parser.add_argument('--mnb', dest='filenamematchway', action='store_const', const='matchfilenambeginnings', help='when looking for duplicates, to match file names where one name begins with full other name (w/out extention)')
 parser.add_argument('--nmn', dest='filenamematchway', action='store_const', const='notmatchfilenames', help='when looking for duplicates, do not check file names, by other file data only')
 parser.add_argument('--simulateonly', action='store_true', help='do not actually delete files on disk, action is db is set to "deleted" still') # defaults to opposite of action if action='store_true' or 'store_false'
-parser.add_argument('--tmp', action='store_true', help='for search and totals - use tmp table in db, default - main table')
-parser.add_argument('--exact', action='store_true', help='for search - use exact filename match, default - LIKE clause for SQL')
+parser.add_argument('--tmp', action='store_true', help='for search and totals - use tmp table in db, default: main table')
+parser.add_argument('--exact', action='store_true', help='for search - use exact filename match, default: LIKE clause for SQL')
 parser.add_argument('--rename', action='store_true', dest='rename', default= False, help='rename retained files with additional potentially useful info from deleted files names, default - analyse names and store in db, do not rename on disk')
 parser.add_argument('--qty', default = 1000000, type=int, help='number of files expected to be processed, default = 1 000 000')
 parser.add_argument('--parts', default = 100, type=int, help='how many times to report intermidiary process status, default = 100')
@@ -91,6 +94,7 @@ filenamematchway = args.filenamematchway
 simulateonly = args.simulateonly
 checkTime = args.checkTime
 rename_files = args.rename
+verbose=args.verbose
 #print (rename_files)
 #exit()
 
@@ -100,9 +104,9 @@ exact_search = args.exact
 action = args.action
 
 if disks == None:
-    disks =[None]
+    disks = [None]
 
-if MainAction in ['delete', 'deletesame']:
+if MainAction in ['delete', 'deletesame', 'deletefolders']:
     diskname = 'temp'
 
 #qw = 'err'
@@ -127,7 +131,7 @@ if full_path != None and full_path == full_path_d:
     togo = False
 
 if MainAction in ['add', 'search', 'totals', 'change', 'copy', 'deletemarked', 'makedirs', 'sync', 'sync2'] and dblocation == './temp.db':
-    print ('- path to database ("--db") is required for this command, if you want to use ./temp.db, please give another path version to it')
+    print ('- path to database ("--db") is required for this command, if you want to use ./temp.db, please give another path version to it. e.g. full path')
     togo = False
 
 if MainAction in ['add', 'search', 'totals', 'change', 'copy', 'deletemarked', 'makedirs', 'sync', 'sync2'] and not Path(dblocation).exists():
@@ -154,9 +158,13 @@ if MainAction in ['delete', 'deletemarked', 'deletesame'] and full_path_d == Non
     print ('- path to file structure where deletion is expected (--files_d) is required for this command')
     togo = False
 
-if MainAction in ['delete'] and not ((full_path == None) ^ (dblocation == './temp.db')): # ^ is logical xor here
-    print ('- either path to file structure (--files) or database (--db) to check againt is required for this command (not both though)')
-    togo = False
+if MainAction in ['delete', 'deletefolders']:
+    if not ((full_path == None) ^ (dblocation == './temp.db')): # ^ is logical xor here
+        print ('- either path to file structure (--files) or database (--db) to check againt is required for this command (not both though)')
+        togo = False
+    if dblocation != './temp.db' and not Path(dblocation).exists():
+        print ("- path --db '%s' not found, typo?" % dblocation)
+        togo = False
 
 if MainAction in ['sync', 'sync2'] and diskname_c == None:
     print ('- diskname to copy to ("--disk_c") is required for this command')
@@ -187,7 +195,7 @@ if dblocation == './temp.db':
     if systemType == 'Windows':
         dblocation = 'temp.db' # r'a:/listfiles.db'.replace ('\\','/')
     elif systemType == 'Linux':
-        pass # dblocation = r'/media/alex/4tb-57/listfiles 4tb-57 by Ub 18 studio.db'
+        pass # dblocation = r'/home/user/listfiles.db'
     else:
         print ('Neither Windows nor Linux, not sure where to put database in file system, exiting...')
         end ()
@@ -208,6 +216,8 @@ if MainAction in ['add', 'copy', 'deletemarked', 'makedirs', 'add', 'sync', 'syn
     row = dbConnection.execute('SELECT * FROM ' + tablename_main + ' WHERE disk = "' + diskname + '" limit 1').fetchone()
     if row == None:
         uprint("--disk '%s' not found in db '%s', terminating...\n" % (diskname,dblocation))
+        if MainAction in ['add']:
+            uprint("maybe use read command?")
         end(startTime, dbConnection)
 
 if MainAction in ['sync', 'sync2']:
@@ -215,6 +225,13 @@ if MainAction in ['sync', 'sync2']:
     if row == None:
         uprint("--disk '%s' not found in db '%s', terminating...\n" % (diskname_c,dblocation))
         end(startTime, dbConnection)
+
+if MainAction in ['delete', 'deletefolders'] and dblocation != './temp.db' and disks != [None]:
+    for disk in disks:
+        row = dbConnection.execute('SELECT * FROM ' + tablename_main + ' WHERE disk = "' + disk + '" limit 1').fetchone()
+        if row == None:
+            uprint("--disk '%s' not found in db '%s', terminating...\n" % (disk,dblocation))
+            end(startTime, dbConnection)
 
 # ----------------------------------------------------------------------------------------------------------------------------------------------------#
 # to copy files set to be copied (field 'action' is 'tocopy') - see help for detailes
@@ -557,6 +574,103 @@ def comparefiles (tablepossibleduplicates, tablemain):
 
 # ----------------------------------------------------------------------------------------------------------------------------------------------------#
 #
+# compare folders along with all their contents
+
+def comparefolders (tablepossibleduplicates, tablemain):
+
+    # looks through folders in database in table tablepossibleduplicates and searches for same folders (all files) in table tablemain - files with same name, size, modification date (depends on checkTime) and same sha256
+    # match is searched for in all disks ([disks] variable)
+
+    uprint("----- compare folders for future deletion taking top folders from table '" + tablepossibleduplicates + "' and checking against possible duplicates in table '" + tablemain + "' -----\n" )
+
+    # added to speed up search many times in case of large number of entries to matches against
+    add_index_db_table_sha256 (dbConnection, tablemain)
+
+    runID=strftime("%Y-%m-%d %H:%M:%S", localtime())
+    deletionFilter = '(action <> "deleted" AND action <> "todelete" OR action is NULL)'
+
+    # if folders overlap, need to update database continuously else duplicates will be deleted both - NOT APPLICABLE HERE, HENCE FALSE
+    # if True not tested after code was modified
+    updateDuringSearch = False
+
+    processed = 0
+    recommended_for_deletion = 0
+
+    # folder != "/" added to skip that SELECT result in case files are present on top level, not folders only
+    myQuery = 'SELECT distinct substr(filepath,1,instr(substr(filepath,2),"/")+1) as folder FROM ' + tablepossibleduplicates + ' WHERE folder != "/" and ' + deletionFilter
+    folder_tofind = dbConnection.execute(myQuery)
+
+    for folderToFind in folder_tofind:
+        found_qty = 0
+        found_on_disks = []
+
+        try:
+
+            for disk in disks:
+
+                match_found = False
+                folder_found = dbConnection.execute('SELECT distinct disk,substr(filepath,1,instr(filepath,"' + folderToFind['folder'] + '")+length("' + folderToFind['folder'] + '")-1) as folder FROM ' + tablemain + ' WHERE ' + deletionFilter + ' AND filepath like ? ' + ('' if disk == None else ' AND disk = "' + disk +'"'),('%' + folderToFind['folder'] + '%',))
+
+                for folderFound in folder_found: # one fully matched is enough
+
+                    # compare number of files, if match, then need to only compare files in one to the other to ensure full two-way match
+                    row = dbConnection.execute('SELECT count(id) as qty FROM ' + tablepossibleduplicates + ' WHERE ' + deletionFilter + ' AND filepath like ?',(folderToFind['folder'] + '%',)).fetchone()
+                    qty_find = row['qty']
+                    row = dbConnection.execute('SELECT count(id) as qty FROM ' + tablemain + ' WHERE ' + deletionFilter + ' AND filepath like ? AND disk = ?',(folderFound['folder'] + '%',folderFound['disk'])).fetchone()
+                    qty_found = row['qty']
+                    if qty_found != qty_find:
+                        if verbose:
+                            uprint ("Qty not matched:", folderToFind['folder'], qty_find, folderFound['folder'], qty_found)
+                        continue # not matched, check next folderFound
+
+                    file_find = dbConnection.execute('SELECT id, disk, filename, filenamenew, filepath, filesize, filetime, sha256, sha256_start, sha256_end FROM ' + tablepossibleduplicates + ' WHERE ' + deletionFilter + ' AND filepath like ?',(folderToFind['folder'] + '%',))
+
+                    for fileToFind in file_find:
+
+                        file_found = dbConnection.execute('SELECT id, disk, filename, filenamenew, filepath, filesize, filetime, sha256, sha256_start, sha256_end FROM ' + tablemain + ' WHERE ' + deletionFilter + ' AND filesize = ? AND sha256 = ? AND sha256_start = ? AND sha256_end = ? and filepath = ? AND disk = ?' + (' AND ABS (filetime - {0}'.format(fileToFind['filetime']) +') <=1' if checkTime else ''),(fileToFind['filesize'],fileToFind['sha256'],fileToFind['sha256_start'],fileToFind['sha256_end'], folderFound['folder'] + fileToFind['filepath'][len(folderToFind['folder']):], folderFound['disk'])).fetchone() # ' AND filetime = ?' if checkTime else '?' - does no work, use <> 1 again
+                        # uprint (fileToFind['filepath'],fileToFind['sha256'],folderFound['disk'])
+                        if file_found == None:
+                            if verbose:
+                                uprint ("NO matched file found for:", fileToFind['filepath'], fileToFind['sha256'], "in:", folderFound['folder'])
+                            break
+
+                    else: # only executed if innner loop did NOT break
+                        if verbose:
+                            uprint ("matched file found for:", fileToFind['filepath'],fileToFind['sha256'],"in:", folderFound['folder'])
+                        match_found = True
+
+                    if match_found:
+                        break # from FOR as there is no obvious point to search for new originals after one matching is found
+
+                if match_found:
+                    found_qty += 1
+                    found_on_disks += [disk]
+
+            # mark for deletion
+            if found_qty == len (disks):
+                uprint (folderToFind['folder'][1:-1], ' matched')
+                recommended_for_deletion += 1
+                dbConnection.execute('UPDATE ' + tablepossibleduplicates + ' SET runID = ?, action = "todelete" WHERE filepath like ?',(runID, folderToFind['folder'] + '%'))
+                if updateDuringSearch:
+                    dbConnection.commit() # needed if search for duplicates is made with single set of files, not one against the other; changes results of outer select for FOR and slower than commit at the end; may change outer query qty returned as working due to SQLite functioning, so be careful when searcing single set of data, not one against the other
+
+            elif found_qty > 0:
+                uprint ("Folder: ", folderToFind['folder'][1:-1], ' found only on disks: ', found_on_disks)
+            else:
+                uprint ("Folder: ", folderToFind['folder'][1:-1], ' NOT matched')
+
+        except Exception as e:
+            uprint ("(Un?)expected error: " + str(e))
+            uprint ("(?) Database error")
+
+        processed += 1
+
+    dbConnection.commit()
+    print ('Folders matched for deletion: ', "{:,.0f}".format(recommended_for_deletion).replace(",", " "), ' out of:', "{:,.0f}".format(processed).replace(",", " "))
+    print()
+
+# ----------------------------------------------------------------------------------------------------------------------------------------------------#
+#
 # delete files marked for deletion
 def deletefiles(targetpath, tablename):
 
@@ -679,7 +793,7 @@ def renamefiles(targetpath, tablename):
 # ----------------------------------------------------------------------------------------------------------------------------------------------------#
 
 # delete empty folders inside needed path
-def deletefolders(pathwheretodelete):
+def deleteemptyfolders(pathwheretodelete):
 
     uprint("----- deleting empty folders in path '" + pathwheretodelete + "' -----\n" )
 
@@ -841,8 +955,6 @@ if MainAction == 'add':
     end(startTime, dbConnection)
 
 # ----------------------------------------------------------------------------------------------------------------------------------------------------
-
-
 #
 # delete files in path if same file is found in database or other path (one and only choice should be supplied)
 
@@ -864,12 +976,38 @@ if MainAction == 'delete':
     deletefiles (full_path_d,tablename_temp) # works only if in comparefiles() deletion was marked in where to find, not found (deleteInFoundNotInFind = False)
 
     # deleting empty folders
-    deletefolders (full_path_d)
+    deleteemptyfolders (full_path_d)
 
     if rename_files:
         print ('-renaming files')
         renamefiles (full_path_d, tablename_main)
         print ()
+    end(startTime, dbConnection)
+
+# ----------------------------------------------------------------------------------------------------------------------------------------------------
+#
+# delete top folders in path if same folder with full matched contents is found in database or other path (one and only choice should be supplied)
+
+if MainAction == 'deletefolders':
+    if (full_path != None): # ^ (dblocation == './temp.db')
+        print ('-reading files to against which to check to temp database main table')
+        delete_db_table (dbConnection, tablename_main) # detele previous reads if existed
+        addfiles (diskname, full_path, tablename_main, False)
+        print ()
+
+    # reading files to possibly delete later in case duplicates are found in database
+    delete_db_table (dbConnection, tablename_temp) # detele previous reads if existed
+    addfiles (diskname, full_path_d, tablename_temp, False)
+
+    # comparing folders and marking found duplicates files for fully matched folders for deletion
+    comparefolders (tablename_temp, tablename_main)
+
+    # deleting files found and marked to be deleted
+    deletefiles (full_path_d, tablename_temp) # works as in comparefoders() deletion is coded to be marked in where to find
+
+    # deleting empty folders, this might be questionable, however here as IIRC no software project file structure has required empty folders 
+    deleteemptyfolders (full_path_d)
+
     end(startTime, dbConnection)
 
 # ----------------------------------------------------------------------------------------------------------------------------------------------------
@@ -881,7 +1019,7 @@ if MainAction == 'deletemarked':
     deletefiles (full_path_d, tablename_temp) # works only if in comparefiles() deletion was marked in where to find, not found (deleteInFoundNotInFind = False)
     print ()
     print ('-deleting empty folders')
-    deletefolders (full_path_d)
+    deleteemptyfolders (full_path_d)
     print ()
     if rename_files:
         print ('-renaming files')
@@ -987,7 +1125,7 @@ if MainAction == 'deletesame':
     print ()
 
     print ('-deleting empty folders')
-    deletefolders (full_path_d)
+    deleteemptyfolders (full_path_d)
     print ()
 
     end(startTime, dbConnection)
