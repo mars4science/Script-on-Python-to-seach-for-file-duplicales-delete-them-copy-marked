@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-__version__ = "5.3, 2023 January 21"
+__version__ = "5.4, 2023 June 23"
 # Python 3.8, Linux Mint 20.2/21 tested
 # Only some earlier versions IIRC were run on Windows, it might still work or require minor changes to paths (/ vs \).
 
@@ -798,9 +798,10 @@ def deleteemptyfolders(pathwheretodelete):
     uprint("----- deleting empty folders in path '" + pathwheretodelete + "' -----\n" )
 
 
-    dirsdeleted = 0
+    dirsdeleted = 0 # in simulateonly mode will count only folders that are empty already at time of check
     dirsdeletedprev = -1 # need to check for empty again after deletion (upward can become empty)
     dirdelerrors = 0
+    dirsprinted = 0
 
     while dirsdeletedprev < dirsdeleted:
 
@@ -816,6 +817,12 @@ def deleteemptyfolders(pathwheretodelete):
                     try:
                         if not simulateonly:
                             os.rmdir(dirpath)
+                        else:
+                            dirsdeletedprev += 1 # to prevent infinite loop
+                            if dirsprinted == 0:
+                                uprint ("Found empty:")
+                                dirsprinted += 1
+                            uprint (dirpath)
                         #os.rename(dirpath, '1')
                         dirsdeleted += 1
                     except Exception as e:
@@ -824,7 +831,9 @@ def deleteemptyfolders(pathwheretodelete):
                         dirdelerrors += 1
                 else:
                     pass 
-
+    
+    if dirsprinted != 0:
+        print ()                         
     print ('Deleted: ', "{:,.0f}".format(dirsdeleted).replace(",", " "))
     print ('Errors: ', "{:,.0f}".format(dirdelerrors).replace(",", " "))
     print ()

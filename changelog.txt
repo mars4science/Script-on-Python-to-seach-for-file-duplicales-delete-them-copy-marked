@@ -1,3 +1,6 @@
+# 5.4, 2023 June 23
+# fix infinite loop that was happening in simulateonly mode when deleting empty folders when they were present
+
 # 5.3, 2023 January 21
 # added deletefolders command with code to identify duplicate folders as many software folders contain some of same files, delete only if whole folder matches
 # added verbose flag for more output, used in deletefolders
