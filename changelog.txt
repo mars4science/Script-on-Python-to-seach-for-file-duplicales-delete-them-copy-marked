@@ -1,3 +1,6 @@
+# 5.5, 2023 July 9
+# add optional usage of --pattern for sync to select only part of filepaths in a location/folder for syncing
+
 # 5.4, 2023 June 23
 # fix infinite loop that was happening in simulateonly mode when deleting empty folders when they were present
 

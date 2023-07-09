@@ -33,7 +33,7 @@ positional arguments:
                         copy - copy files from one location (--files) to other (--files_c) for those files where action field in database (--db) is set to "tocopy" for specific --disk, 
                         deletesame - delete duplicates in same location (--files_d) by filesize, sha256; also by name (exact or not, partial matching option same effect as do not match) and timestamp (exact ot not), 
                         makedirs - make directories in path of files_c from filesdata entries in database, 
-                        sync - add files absent on one disk/location to another disk/location and update the db, need disk, disk_c - to locate files in db, files, files_c - paths to roots of locations to copy from and copy to (paths from db are appended to them), 
+                        sync - add files absent on one disk/location (optional --pattern to select only part of filepaths, e.g. /folder1/%) to another disk/location and update the db, need disk, disk_c - to locate files in db, files, files_c - paths to roots of locations to copy from and copy to (paths from db are appended to them), 
                         sync2 - same as sync but do both ways, from files to files_c then from files_c to files, 
                         deletefolders - delete top level folder(s) recursively in provided --files_d path if complete matched folders contents are found in database (--db) or other path (--files) by file sha256, name, size and modification time and only if file is found on each of all disks (--disks can be several times), also --notchecktime (optional)
 
@@ -48,7 +48,7 @@ options:
   --disk DISK           disk name tag of file structure info - for add, read, totals, search, sync, sync2
   --disk_c DISK_C       disk name tag to copy files to, used by sync, sync2 commands
   --disks DISKS         disk name tags when searched for candidates for deletion against database, if present, file should be present on all disks in main table to be considered a candidate, if omitted, should be present in main table as a whole. Should be one name per argument, several arguments possible, NOT several in one argument separated by comma
-  --pattern PATTERN     filename expression to search, percentage sign symbol can be used as any number of any symbols, ignore case, _ symbol means any AFAIK, for exact search add --exact parameter
+  --pattern PATTERN     filename expression for search/filepath expression for sync (optional for sync), % - percentage sign symbol can be used as any number of any symbols, ignore case, _ symbol means any AFAIK, for exact search add --exact parameter
   --action ACTION       action text to search, usefull after processing, e.g. set to "deleted" if deleted
   --notchecktime        when looking for duplicates, do not check that timestamp (modification time) is the same, default: check time
   --notmatchtime        when looking for duplicates, do not check that timestamp (modification time) is the same, default = check time, same effect as notchecktime
