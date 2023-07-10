@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-__version__ = "5.5, 2023 July 09"
+__version__ = "5.6, 2023 July 10"
 # Python 3.8, Linux Mint 20.2/21 tested
 # Only some earlier versions IIRC were run on Windows, it might still work or require minor changes to paths (/ vs \).
 
@@ -856,6 +856,7 @@ def addfiles(disk_name, files_path, tablename, checksame):
     processed_dirs = 0
     partprocessed = 0
     added_files = 0
+    links_updated = 0
 
     print ("Files to process: ", filestoprocess)
     print ()
@@ -875,11 +876,26 @@ def addfiles(disk_name, files_path, tablename, checksame):
 
                 if checksame == True:
                     filepath_db=filepath_db.replace('"','""') # SQLite to have quotation marks in strings need to double them, need to do here as concatenate full SQLite command as a text string, no need to multiple quotation marks more below when each variable is passed separately to dbConnection.execute ('INSERT...'); P.S. to concatenate in SQLite use ||
-                    c = dbConnection.execute('SELECT disk, filesize, filename, filenamenew, filepath, filetime, action, runID, sha256, sha256_start, sha256_end FROM ' + tablename + ' WHERE disk = "' + disk_name + '" AND filepath = "' + filepath_db + '"') 
+                    c = dbConnection.execute('SELECT id, disk, filesize, filename, filenamenew, filepath, filetime, action, runID, sha256, sha256_start, sha256_end FROM ' + tablename + ' WHERE disk = "' + disk_name + '" AND filepath = "' + filepath_db + '"')
                     filepath_db=filepath_db.replace('""','"') # replace back after SQLite execution
                     for row in c:
                         filesfound += 1
                         #files_size += row['filesize']
+
+                        # update entries for links to new format of 2023/07
+                        if os.path.islink(filepath):
+                            if row['sha256_start'] != 'link':
+                                linkname = os.readlink(filepath)
+                                linkname_uft8=linkname.encode('utf-8')
+                                sha256_end=linkname_uft8
+                                sha256_temp = hashlib.sha256(linkname_uft8).hexdigest()
+                                uprint(" --- link updated ! ",filepath, " -> ", linkname, 'on disk', disk_name) # just alert, links were rare
+                                sha256_start = "link"
+                                filesize = Path(filepath).lstat().st_size
+                                filetime = Path(filepath).lstat().st_mtime
+                                dbConnection.execute('UPDATE ' + tablename + ' SET sha256 = ?, sha256_start = ?, sha256_end = ?, filesize = ?, filetime = ? WHERE id = ?',(sha256_temp, sha256_start, sha256_end, filesize, filetime, row['id'], ))
+                                dbConnection.commit()
+                                links_updated += 1
                 
                 if filesfound == 0:
 #                    filesize = os.path.getsize(filepath)
@@ -894,11 +910,12 @@ def addfiles(disk_name, files_path, tablename, checksame):
                     if os.path.islink(filepath):
                         # read link and calculate sha256 of it
                         linkname = os.readlink(filepath)
-                        sha256_temp = hashlib.sha256(linkname.encode('utf-8')).hexdigest()
+                        linkname_uft8=linkname.encode('utf-8')
+                        sha256_end=linkname_uft8
+                        sha256_temp = hashlib.sha256(linkname_uft8).hexdigest()
                         uprint(" - link ! ",filepath, " -> ", linkname) # just alert, links were rare
-                        sha256_start = sha256_temp
-                        sha256_end = sha256_temp
-                    else:      
+                        sha256_start = "link"
+                    else:
                         # read file contents and calculate sha256
                         BLOCKSIZE = 65536 # in bytes, 65536*256 ~= 16mb, * 256 increases processing time with many small files
                         hasher = hashlib.sha256() #md5
@@ -946,6 +963,8 @@ def addfiles(disk_name, files_path, tablename, checksame):
     print ('Number of files   that have been read  : {:,.0f}'.format(processed_files).replace(',', ' '))
     print ('Number of folders that have been read  : {:,.0f}'.format(processed_dirs).replace(',', ' '))
     print ('Sum    of objects that have been read  : {:,.0f}'.format(processed_dirs + processed_files).replace(',', ' '))
+    if links_updated > 0:
+        print ('Number of links updated                : {:,.0f}'.format(links_updated).replace(',', ' '))
     print ()
 
 # ----------------------------------------------------------------------------------------------------------------------------------------------------#
