@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-__version__ = "5.6, 2023 July 10"
+__version__ = "5.7, 2023 July 15"
 # Python 3.8, Linux Mint 20.2/21 tested
 # Only some earlier versions IIRC were run on Windows, it might still work or require minor changes to paths (/ vs \).
 
@@ -41,7 +41,18 @@ def signal_handler(sig,frame):
     print("Seems like Ctrl-C pressed, commiting changes to db")  
     dbConnection.commit()
     sys.exit(0)
+to_end_program_on_sigint=False
+#class interrupt_li: # interrupt_li.do can be used in place of to_end_program_on_sigint, no need for "global" keyword that way
+#    do=False
+def delayed_signal_handler(sig,frame):
+    global to_end_program_on_sigint
+    to_end_program_on_sigint=True
+    # interrupt_li.do=True
+
 signal.signal(signal.SIGINT, signal_handler)
+
+signal.signal(signal.SIGHUP, signal_handler)
+signal.signal(signal.SIGQUIT, signal_handler)
 
 import argparse
 from argparse import RawTextHelpFormatter
@@ -61,8 +72,7 @@ parser.add_argument('--disk', help='disk name tag of file structure info - for a
 parser.add_argument('--disk_c', help='disk name tag to copy files to, used by sync, sync2 commands')
 parser.add_argument('--disks', action='append', help='disk name tags when searched for candidates for deletion against database, if present, file should be present on all disks in main table to be considered a candidate, if omitted, should be present in main table as a whole. Should be one name per argument, several arguments possible, NOT several in one argument separated by comma')
 parser.add_argument('--pattern', help='filename expression for search/filepath expression for sync (optional for sync), %% - percentage sign symbol can be used as any number of any symbols, ignore case, _ symbol means any AFAIK, for exact search add --exact parameter') # symbol % in help string gives argparse error on parse_args() line
-parser.add_argument('--action', help='action text to search, usefull after processing, e.g. set to "deleted" if deleted') 
-
+parser.add_argument('--action', help='action text to search, usefull after processing, e.g. set to "deleted" if deleted')
 parser.add_argument('--notchecktime', action='store_false', dest='checkTime', help='when looking for duplicates, do not check that timestamp (modification time) is the same, default: check time')
 parser.add_argument('--notmatchtime', action='store_false', dest='checkTime', help='when looking for duplicates, do not check that timestamp (modification time) is the same, default = check time, same effect as notchecktime')
 parser.set_defaults(checkTime=True)
@@ -311,9 +321,16 @@ def copymarked(disk_name, source_path, dest_path):
                         except Exception as e:
                             pass
                         try:
+                            # s=signal.signal(signal.SIGINT,signal.SIG_IGN) # get current handler in s, set sigint to beeing ignored
+                            s=signal.signal(signal.SIGINT, delayed_signal_handler) # get current handler in s, set temporary "delayed" handler
                             shutil.copy2(srcfile, dstdir, follow_symlinks=False)
                             copied +=1
                             d = dbConnection.execute('UPDATE "' + tablename_main + '" SET action = "copied" WHERE id = ' + str(row_c['id']))
+                            signal.signal(signal.SIGINT,s) # restore handler
+                            if to_end_program_on_sigint:
+                                print ("Seems like Ctrl-C pressed SOME time ago, commiting changes to db")
+                                dbConnection.commit()
+                                sys.exit(0)
                         except Exception as e:
                             notcopiedasfailed +=1
                             d = dbConnection.execute('UPDATE "' + tablename_main + '" SET action = "not copied as copy failed" WHERE id = ' + str(row_c['id']))
@@ -329,8 +346,14 @@ def copymarked(disk_name, source_path, dest_path):
 
     print ('Number of files that have been copied         : {:,.0f}'.format(copied).replace(',', ' '))
     print ('Number of files that have been not been found : {:,.0f}'.format(notcopiedasnotfound).replace(',', ' '))
+    if notcopiedasnotfound > 0:
+        uprint("  To see: database, entries with 'not copied as not found' in action field.\n")
     print ('Number of files that have been there already  : {:,.0f}'.format(notcopiedaswerethere).replace(',', ' '))
+    if notcopiedaswerethere > 0:
+        uprint("  To see: database, entries with 'not copied as was already there' in action field.\n")
     print ('Number of files that had errors on copy       : {:,.0f}'.format(notcopiedasfailed).replace(',', ' '))
+    if notcopiedasfailed > 0:
+        uprint("  To see: database, entries with 'not copied as copy failed' in action field.\n")
     print ()
 
 
@@ -703,10 +726,19 @@ def deletefiles(targetpath, tablename):
             else:
                 filepathTodelete = filepathTodelete.replace ('/','\\')             
 
+            s=signal.signal(signal.SIGINT, delayed_signal_handler) # get current handler in s, set delayed one
+
             if not simulateonly:
                 os.remove(filepathTodelete)
 
             dbConnection.execute('UPDATE ' + tablename + ' SET action = "deleted" WHERE id = ?', (row['id'], ))
+
+            signal.signal(signal.SIGINT,s) # restore handler
+            if to_end_program_on_sigint:
+                print ("\n  Seems like Ctrl-C pressed SOME time ago, commiting changes to db")
+                dbConnection.commit()
+                sys.exit(0)
+
             filesdeleted += 1
 
         except FileNotFoundError as e:

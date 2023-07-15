@@ -1,3 +1,6 @@
+# 5.7, 2023 July 15
+# added Ctrl-C signal suspension in functions copymarked and sync_one_way to have both changes to files on disk and database entries made before intettuption occurs (not interrupted between)
+
 # 5.6, 2023 July 10
 # for link type files changed how sha256 fields are set on read/add (addfiles function) - now sha256_start = "link", sha256_end - location where links points to, for existing database entries when encountered by addfiles function if link in another sha256 "format" (no "link" in sha256_start field) changing to new format
 
