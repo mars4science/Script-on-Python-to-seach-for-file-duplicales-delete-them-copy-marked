@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-__version__ = "5.8, 2023 August 31"
+__version__ = "5.9, 2023 August 31"
 # Python 3.8, Linux Mint 20.2/21 tested
 # Only some earlier versions IIRC were run on Windows, it might still work or require minor changes to paths (/ vs \).
 
@@ -279,7 +279,7 @@ def copymarked(disk_name, source_path, dest_path):
                 source_found=Path(srcfile).is_symlink() or Path(srcfile).exists()
                 try_to=try_success
             except Exception as e:
-                uprint ("(Un?)expected error when check existence of source file: " + str(e))
+                uprint ("(Un?)expected error when checking existence of source file: " + str(e))
                 uprint ("Wating several seconds and trying again...")
                 time.sleep(10)
                 try_to -= 1
@@ -641,11 +641,13 @@ def comparefolders (tablepossibleduplicates, tablemain):
                 match_found = False
                 folder_found = dbConnection.execute('SELECT distinct disk,substr(filepath,1,instr(filepath,"' + folderToFind['folder'] + '")+length("' + folderToFind['folder'] + '")-1) as folder FROM ' + tablemain + ' WHERE ' + deletionFilter + ' AND filepath like ? ' + ('' if disk == None else ' AND disk = "' + disk +'"'),('%' + folderToFind['folder'] + '%',))
 
+                # for comparing qty of files later
+                row = dbConnection.execute('SELECT count(id) as qty FROM ' + tablepossibleduplicates + ' WHERE ' + deletionFilter + ' AND filepath like ?',(folderToFind['folder'] + '%',)).fetchone()
+                qty_find = row['qty']
+
                 for folderFound in folder_found: # one fully matched is enough
 
                     # compare number of files, if match, then need to only compare files in one to the other to ensure full two-way match
-                    row = dbConnection.execute('SELECT count(id) as qty FROM ' + tablepossibleduplicates + ' WHERE ' + deletionFilter + ' AND filepath like ?',(folderToFind['folder'] + '%',)).fetchone()
-                    qty_find = row['qty']
                     row = dbConnection.execute('SELECT count(id) as qty FROM ' + tablemain + ' WHERE ' + deletionFilter + ' AND filepath like ? AND disk = ?',(folderFound['folder'] + '%',folderFound['disk'])).fetchone()
                     qty_found = row['qty']
                     if qty_found != qty_find:
