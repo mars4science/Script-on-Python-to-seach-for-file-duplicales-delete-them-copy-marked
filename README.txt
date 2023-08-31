@@ -16,12 +16,12 @@ usage: files.py [-h] [--version] [--verbose] [--db DB] [--files FILES]
                 [--action ACTION] [--notchecktime] [--notmatchtime] [--mne]
                 [--mnb] [--nmn] [--simulateonly] [--tmp] [--exact] [--rename]
                 [--qty QTY] [--parts PARTS]
-                {read,add,search,totals,delete,deletemarked,compareonly,change,copy,deletesame,makedirs,sync,sync2,deletefolders}
+                {read,add,searchname,searchpath,totals,delete,deletemarked,compareonly,change,copy,deletesame,makedirs,sync,sync2,deletefolders}
 
 Process file structures, deleting duplicates renaming retained files is useful if additional info is not contained in extention - part of file name after last . symbol; paths better be passed as absolute
 
 positional arguments:
-  {read,add,search,totals,delete,deletemarked,compareonly,change,copy,deletesame,makedirs,sync,sync2,deletefolders}
+  {read,add,searchname,searchpath,totals,delete,deletemarked,compareonly,change,copy,deletesame,makedirs,sync,sync2,deletefolders}
                         command name: 
                         read - adds files in --filespath to database --db (modification date, size, sha256sum, path, name, --disk), 
                         adds - same as read but adds only those that are not already in --db (checks for same --disk AND path that includes name), 
@@ -45,19 +45,19 @@ options:
   --files FILES         full path to the only/main file structure
   --files_d FILES_D     full path to other file structure - where objects need to be deleted
   --files_c FILES_C     full path to other file structure - whereto objects need to be copied for copy/or folders be created for makedirs
-  --disk DISK           disk name tag of file structure info - for add, read, totals, search, sync, sync2
+  --disk DISK           disk name tag of file structure info - for add, read, totals, search{name|path}, sync, sync2
   --disk_c DISK_C       disk name tag to copy files to, used by sync, sync2 commands
   --disks DISKS         disk name tags when searched for candidates for deletion against database, if present, file should be present on all disks in main table to be considered a candidate, if omitted, should be present in main table as a whole. Should be one name per argument, several arguments possible, NOT several in one argument separated by comma
-  --pattern PATTERN     filename expression for search/filepath expression for sync (optional for sync), % - percentage sign symbol can be used as any number of any symbols, ignore case, _ symbol means any AFAIK, for exact search add --exact parameter
-  --action ACTION       action text to search, usefull after processing, e.g. set to "deleted" if deleted
+  --pattern PATTERN     file{name|path} expression for search{name|path} / filepath expression for sync (optional for sync), % - percentage sign symbol can be used as any number of any symbols, ignore case, _ symbol means any AFAIK, for exact search add --exact parameter
+  --action ACTION       action text to search{name|path}, usefull after processing, e.g. set to "deleted" if deleted
   --notchecktime        when looking for duplicates, do not check that timestamp (modification time) is the same, default: check time
   --notmatchtime        when looking for duplicates, do not check that timestamp (modification time) is the same, default = check time, same effect as notchecktime
   --mne                 when looking for duplicates, to match file names exactly, this is default
   --mnb                 when looking for duplicates, to match file names where one name begins with full other name (w/out extention)
   --nmn                 when looking for duplicates, do not check file names, by other file data only
   --simulateonly        do not actually delete files on disk, action is db is set to "deleted" still
-  --tmp                 for search and totals - use tmp table in db, default: main table
-  --exact               for search - use exact filename match, default: LIKE clause for SQL
+  --tmp                 for search{name|path} and totals - use tmp table in db, default: main table
+  --exact               for search{name|path} - use exact filename match, default: LIKE clause for SQL
   --rename              rename retained files with additional potentially useful info from deleted files names, default - analyse names and store in db, do not rename on disk
   --qty QTY             number of files expected to be processed, default = 1 000 000
   --parts PARTS         how many times to report intermidiary process status, default = 100

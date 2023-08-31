@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-__version__ = "5.7, 2023 July 15"
+__version__ = "5.8, 2023 August 31"
 # Python 3.8, Linux Mint 20.2/21 tested
 # Only some earlier versions IIRC were run on Windows, it might still work or require minor changes to paths (/ vs \).
 
@@ -59,7 +59,7 @@ from argparse import RawTextHelpFormatter
 #from argparse import ArgumentParser
 
 parser = argparse.ArgumentParser(description='Process file structures, deleting duplicates renaming retained files is useful if additional info is not contained in extention - part of file name after last . symbol; paths better be passed as absolute', formatter_class=RawTextHelpFormatter)
-parser.add_argument('command', choices=['read','add', 'search','totals', 'delete', 'deletemarked', 'compareonly', 'change', 'copy', 'deletesame', 'makedirs', 'sync', 'sync2', 'deletefolders'], help='command name: \nread - adds files in --filespath to database --db (modification date, size, sha256sum, path, name, --disk), \nadds - same as read but adds only those that are not already in --db (checks for same --disk AND path that includes name), \nsearch - outputs found files and info on them, \ntotals - outputs totals, \ndelete - deletes files in path (--files_d) against database (--db) or other path (--files) by file sha256, name, size and modification time and only if file is found on each of all disks (--disks can be several times), also --notchecktime --mne --mnb --nmn --rename (optional), \ndeletemarked - deleting (and renaming) what is marked already in database (by action field set to "todelete" in files_todelete table; if need to redo deletion for another disk, please run "change" to semi-manually change action field) and --files_d is used to add to path stored in database at beginning and --disk is used to delete marked for that disk only as a safeguard, delete from temp table, rename what is in main table, \ncompareonly - run only matching procedure for two tables in database which should be filled in already, \ncopy - copy files from one location (--files) to other (--files_c) for those files where action field in database (--db) is set to "tocopy" for specific --disk, \ndeletesame - delete duplicates in same location (--files_d) by filesize, sha256; also by name (exact or not, partial matching option same effect as do not match) and timestamp (exact ot not), \nmakedirs - make directories in path of files_c from filesdata entries in database, \nsync - add files absent on one disk/location (optional --pattern to select only part of filepaths, e.g. /folder1/%%) to another disk/location and update the db, need disk, disk_c - to locate files in db, files, files_c - paths to roots of locations to copy from and copy to (paths from db are appended to them), \nsync2 - same as sync but do both ways, from files to files_c then from files_c to files, \ndeletefolders - delete top level folder(s) recursively in provided --files_d path if complete matched folders contents are found in database (--db) or other path (--files) by file sha256, name, size and modification time and only if file is found on each of all disks (--disks can be several times), also --notchecktime (optional)')
+parser.add_argument('command', choices=['read','add', 'searchname','searchpath','totals', 'delete', 'deletemarked', 'compareonly', 'change', 'copy', 'deletesame', 'makedirs', 'sync', 'sync2', 'deletefolders'], help='command name: \nread - adds files in --filespath to database --db (modification date, size, sha256sum, path, name, --disk), \nadds - same as read but adds only those that are not already in --db (checks for same --disk AND path that includes name), \nsearch - outputs found files and info on them, \ntotals - outputs totals, \ndelete - deletes files in path (--files_d) against database (--db) or other path (--files) by file sha256, name, size and modification time and only if file is found on each of all disks (--disks can be several times), also --notchecktime --mne --mnb --nmn --rename (optional), \ndeletemarked - deleting (and renaming) what is marked already in database (by action field set to "todelete" in files_todelete table; if need to redo deletion for another disk, please run "change" to semi-manually change action field) and --files_d is used to add to path stored in database at beginning and --disk is used to delete marked for that disk only as a safeguard, delete from temp table, rename what is in main table, \ncompareonly - run only matching procedure for two tables in database which should be filled in already, \ncopy - copy files from one location (--files) to other (--files_c) for those files where action field in database (--db) is set to "tocopy" for specific --disk, \ndeletesame - delete duplicates in same location (--files_d) by filesize, sha256; also by name (exact or not, partial matching option same effect as do not match) and timestamp (exact ot not), \nmakedirs - make directories in path of files_c from filesdata entries in database, \nsync - add files absent on one disk/location (optional --pattern to select only part of filepaths, e.g. /folder1/%%) to another disk/location and update the db, need disk, disk_c - to locate files in db, files, files_c - paths to roots of locations to copy from and copy to (paths from db are appended to them), \nsync2 - same as sync but do both ways, from files to files_c then from files_c to files, \ndeletefolders - delete top level folder(s) recursively in provided --files_d path if complete matched folders contents are found in database (--db) or other path (--files) by file sha256, name, size and modification time and only if file is found on each of all disks (--disks can be several times), also --notchecktime (optional)')
 
 parser.add_argument('--version', action = 'version', version='%(prog)s version '+ __version__)
 parser.add_argument('--verbose', action='store_true', dest='verbose', help='output additional info, default: no output')
@@ -68,11 +68,11 @@ parser.add_argument('--db', default='./temp.db', help='full path to database loc
 parser.add_argument('--files', help='full path to the only/main file structure')
 parser.add_argument('--files_d', help='full path to other file structure - where objects need to be deleted')
 parser.add_argument('--files_c', help='full path to other file structure - whereto objects need to be copied for copy/or folders be created for makedirs')
-parser.add_argument('--disk', help='disk name tag of file structure info - for add, read, totals, search, sync, sync2')
+parser.add_argument('--disk', help='disk name tag of file structure info - for add, read, totals, search{name|path}, sync, sync2')
 parser.add_argument('--disk_c', help='disk name tag to copy files to, used by sync, sync2 commands')
 parser.add_argument('--disks', action='append', help='disk name tags when searched for candidates for deletion against database, if present, file should be present on all disks in main table to be considered a candidate, if omitted, should be present in main table as a whole. Should be one name per argument, several arguments possible, NOT several in one argument separated by comma')
-parser.add_argument('--pattern', help='filename expression for search/filepath expression for sync (optional for sync), %% - percentage sign symbol can be used as any number of any symbols, ignore case, _ symbol means any AFAIK, for exact search add --exact parameter') # symbol % in help string gives argparse error on parse_args() line
-parser.add_argument('--action', help='action text to search, usefull after processing, e.g. set to "deleted" if deleted')
+parser.add_argument('--pattern', help='file{name|path} expression for search{name|path} / filepath expression for sync (optional for sync), %% - percentage sign symbol can be used as any number of any symbols, ignore case, _ symbol means any AFAIK, for exact search add --exact parameter') # symbol % in help string gives argparse error on parse_args() line
+parser.add_argument('--action', help='action text to search{name|path}, usefull after processing, e.g. set to "deleted" if deleted')
 parser.add_argument('--notchecktime', action='store_false', dest='checkTime', help='when looking for duplicates, do not check that timestamp (modification time) is the same, default: check time')
 parser.add_argument('--notmatchtime', action='store_false', dest='checkTime', help='when looking for duplicates, do not check that timestamp (modification time) is the same, default = check time, same effect as notchecktime')
 parser.set_defaults(checkTime=True)
@@ -80,8 +80,8 @@ parser.add_argument('--mne', dest='filenamematchway', action='store_const', cons
 parser.add_argument('--mnb', dest='filenamematchway', action='store_const', const='matchfilenambeginnings', help='when looking for duplicates, to match file names where one name begins with full other name (w/out extention)')
 parser.add_argument('--nmn', dest='filenamematchway', action='store_const', const='notmatchfilenames', help='when looking for duplicates, do not check file names, by other file data only')
 parser.add_argument('--simulateonly', action='store_true', help='do not actually delete files on disk, action is db is set to "deleted" still') # defaults to opposite of action if action='store_true' or 'store_false'
-parser.add_argument('--tmp', action='store_true', help='for search and totals - use tmp table in db, default: main table')
-parser.add_argument('--exact', action='store_true', help='for search - use exact filename match, default: LIKE clause for SQL')
+parser.add_argument('--tmp', action='store_true', help='for search{name|path} and totals - use tmp table in db, default: main table')
+parser.add_argument('--exact', action='store_true', help='for search{name|path} - use exact filename match, default: LIKE clause for SQL')
 parser.add_argument('--rename', action='store_true', dest='rename', default= False, help='rename retained files with additional potentially useful info from deleted files names, default - analyse names and store in db, do not rename on disk')
 parser.add_argument('--qty', default = 1000000, type=int, help='number of files expected to be processed, default = 1 000 000')
 parser.add_argument('--parts', default = 100, type=int, help='how many times to report intermidiary process status, default = 100')
@@ -140,15 +140,15 @@ if full_path != None and full_path == full_path_d:
     print ('- paths to files same: --files and --files_d, terminating.\n To delete in same location: deletesame command with only --files_d.')
     togo = False
 
-if MainAction in ['add', 'search', 'totals', 'change', 'copy', 'deletemarked', 'makedirs', 'sync', 'sync2'] and dblocation == './temp.db':
+if MainAction in ['add', 'searchname', 'searchpath', 'totals', 'change', 'copy', 'deletemarked', 'makedirs', 'sync', 'sync2'] and dblocation == './temp.db':
     print ('- path to database ("--db") is required for this command, if you want to use ./temp.db, please give another path version to it. e.g. full path')
     togo = False
 
-if MainAction in ['add', 'search', 'totals', 'change', 'copy', 'deletemarked', 'makedirs', 'sync', 'sync2'] and not Path(dblocation).exists():
+if MainAction in ['add', 'searchname', 'searchpath', 'totals', 'change', 'copy', 'deletemarked', 'makedirs', 'sync', 'sync2'] and not Path(dblocation).exists():
     print ("- path --db '%s' not found, typo?" % dblocation)
     togo = False
 
-if MainAction in ['search'] and FileNameEx == None:
+if MainAction in ['searchname', 'searchpath'] and FileNameEx == None:
     print ('- search pattern ("--pattern") is required for this command')
     togo = False
 
@@ -301,7 +301,7 @@ def copymarked(disk_name, source_path, dest_path):
                         destination_found=Path(dstfile).is_symlink() or Path(dstfile).exists()
                         try_to=try_success
                     except Exception as e:
-                        uprint ("(Un?)expected error when check existence of destination file: " + str(e))
+                        uprint ("(Un?)expected error when checking existence of destination file: " + str(e))
                         uprint ("Wating several seconds and trying again...")
                         time.sleep(10)
                         try_to -= 1
@@ -444,10 +444,16 @@ if MainAction == 'totals':
 
 # ----------------------------------------------------------------------------------------------------------------------------------------------------#
 
-if MainAction == 'search':
+if MainAction in ['searchname', 'searchpath']:
+
+    if MainAction == 'searchname':
+        filenp = 'filename'
+    else:
+        filenp = 'filepath'
 
     # c = dbConnection.execute('SELECT disk, filesize, filename, filenamenew, filepath, filetime, action, runID FROM "' + tablename_main + '" WHERE disk = "Test" AND filepath LIKE "%alex%" AND filename LIKE "%a%" ORDER BY filepath ASC') 
-    c = dbConnection.execute('SELECT disk, filesize, filename, filenamenew, filepath, filetime, action, runID, sha256, sha256_start, sha256_end FROM ' + (tablename_temp if use_temp_table else tablename_main) + ' WHERE filename ' + ('=' if exact_search else 'LIKE') + ' "' + FileNameEx +  '"' + ('' if (diskname is None) else ' AND disk = "' + diskname + '"') + ('' if (action is None) else ' AND action = "' + action + '"') + '   ORDER BY filepath ASC') # WHERE sha256 IS NOT NULL AND filesize <> 71 
+    c = dbConnection.execute('SELECT disk, filesize, filename, filenamenew, filepath, filetime, action, runID, sha256, sha256_start, sha256_end FROM ' + (tablename_temp if use_temp_table else tablename_main) + ' WHERE ' + filenp + ' ' + ('=' if exact_search else 'LIKE') + ' "' + FileNameEx +  '"' + ('' if (diskname is None) else ' AND disk = "' + diskname + '"') + ('' if (action is None) else ' AND action = "' + action + '"') + '   ORDER BY filepath ASC') # WHERE sha256 IS NOT NULL AND filesize <> 71
+
 
     #  filenamenew IS NOT NULL AND  OR action IS NULL runid = "music 1" AND  AND (action = "todelete") FileNameEx
 
@@ -624,6 +630,7 @@ def comparefolders (tablepossibleduplicates, tablemain):
     folder_tofind = dbConnection.execute(myQuery)
 
     for folderToFind in folder_tofind:
+        uprint ("  Processing folder: ", folderToFind['folder'][1:-1])
         found_qty = 0
         found_on_disks = []
 
