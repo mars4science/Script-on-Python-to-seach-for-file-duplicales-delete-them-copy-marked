@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-__version__ = "5.9.1, 2023 Sep 1"
+__version__ = "5.9.2, 2023 Sep 1"
 # Python 3.8, Linux Mint 20.2/21 tested
 # Only some earlier versions IIRC were run on Windows, it might still work or require minor changes to paths (/ vs \).
 
@@ -63,6 +63,8 @@ parser.add_argument('command', choices=['read','add', 'searchname','searchpath',
 parser.add_argument('--version', action = 'version', version='%(prog)s version '+ __version__)
 parser.add_argument('--verbose', action='store_true', dest='verbose', help='output additional info, default: no output')
 parser.set_defaults(verbose=False)
+parser.add_argument('--debug', action='store_true', dest='debug', help='output technical additional info, default: no output')
+parser.set_defaults(debug=False)
 parser.add_argument('--db', default='./temp.db', help='full path to database location, default = temp.db in current folder')
 parser.add_argument('--files', help='full path to the only/main file structure')
 parser.add_argument('--files_d', help='full path to other file structure - where objects need to be deleted')
@@ -104,6 +106,7 @@ simulateonly = args.simulateonly
 checkTime = args.checkTime
 rename_files = args.rename
 verbose=args.verbose
+debug=args.debug
 #print (rename_files)
 #exit()
 
@@ -113,7 +116,7 @@ exact_search = args.exact
 action = args.action
 
 if disks == None:
-    disks = [None]
+    disks = [None] # has length of 1
 
 if MainAction in ['delete', 'deletesame', 'deletefolders']:
     diskname = 'temp'
@@ -625,16 +628,12 @@ def comparefolders (tablepossibleduplicates, tablemain):
 
     runID=strftime("%Y-%m-%d %H:%M:%S", localtime())
 
-    # if folders overlap, need to update database continuously else duplicates will be deleted both - NOT APPLICABLE HERE, HENCE FALSE
-    # if True not tested after code was modified
-    updateDuringSearch = False
-
     processed = 0
     recommended_for_deletion = 0
 
     # folder != "/" (later changed to more general "not equal to subfolders_separator") added to skip single files on top level
     # string functions in SQLite set? 1st character as 1 (Python as 0)
-    # line below selects top level folders along with subfolders_separator before and after
+    # line below selects top level folders along with before and after subfolders_separator
     myQuery = 'SELECT count(id) as qty, sum(filesize) as totalsize, substr(filepath,1,instr(substr(filepath,' + str(subfolders_separator_length + 1) + '),"' + subfolders_separator + '")+' + str(subfolders_separator_length*2-1) + ') as folder FROM ' + tablepossibleduplicates + ' WHERE folder != "' + subfolders_separator + '" and ' + notDeletedFilter + ' GROUP BY folder ORDER BY folder'
     folders_tofind = dbConnection.execute(myQuery)
 
@@ -649,55 +648,58 @@ def comparefolders (tablepossibleduplicates, tablemain):
 
             for disk in disks:
 
-                match_found = False
-                disk_filter = '' if disk == None else ' AND disk = "' + disk + '"'
-                folder_found = dbConnection.execute('SELECT count(id) as qty, sum(filesize) as totalsize, disk, substr(filepath,1,instr(filepath,"' + folderToFind['folder'] + '")+length("' + folderToFind['folder'] + '")-1) as folder FROM ' + tablemain + ' WHERE ' + notDeletedFilter + ' AND filepath like ? ' + ('' if disk == None else ' AND disk = "' + disk + '"') + ' GROUP BY disk, folder ORDER BY disk, folder',('%' + folderToFind['folder'] + '%',))
+                # recursion added for e.g. finding /b/ in /a/b/c/b/files (occurences of same searched for folder name on several levels)
+                def inner_comparefolders(skip_start_of_path):
 
-                for folderFound in folder_found: # one fully matched is enough
+                    # nonlocal statements needed to change variables of outer function
+                    nonlocal found_qty
+                    nonlocal found_on_disks
 
-                    # compare number and total size of files, if match, then need to only compare files in one to the other to ensure full two-way match
-                    qty_found = folderFound['qty']
-                    size_found = folderFound['totalsize']
-                    if qty_found != qty_find:
-                        if verbose:
-                            uprint ("Qty not matched:", folderToFind['folder'], qty_find, 'vs: ', folderFound['folder'], 'on: ', folderFound['disk'], qty_found)
-                        continue # not matched, check next folderFound
-                    if size_found != size_find:
-                        if verbose:
-                            uprint ("Size not matched:", folderToFind['folder'], size_find, 'vs: ', folderFound['folder'], 'on: ', folderFound['disk'], size_found)
-                        continue # not matched, check next folderFound
+                    folder_found = dbConnection.execute('SELECT count(id) as qty, sum(filesize) as totalsize, disk, substr(filepath,1,' + str(len(skip_start_of_path)) + '+instr(substr(filepath,' + str(len(skip_start_of_path)+1) + '),"' + folderToFind['folder'] + '")+length("' + folderToFind['folder'] + '")-1) as folder FROM ' + tablemain + ' WHERE ' + notDeletedFilter + ' AND filepath like ? ' + ('' if disk == None else ' AND disk = "' + disk + '"') + ' GROUP BY disk, folder ORDER BY disk, folder',(skip_start_of_path + '%' + folderToFind['folder'] + '%',))
 
-                    file_find = dbConnection.execute('SELECT id, disk, filename, filenamenew, filepath, filesize, filetime, sha256, sha256_start, sha256_end FROM ' + tablepossibleduplicates + ' WHERE ' + notDeletedFilter + ' AND filepath like ?',(folderToFind['folder'] + '%',))
+                    for folderFound in folder_found: # one fully matched is enough
 
-                    for fileToFind in file_find:
+                        if debug: print('<DEBUG> folderFound["folder"]:', folderFound['folder'])
 
-                        file_found = dbConnection.execute('SELECT id, disk, filename, filenamenew, filepath, filesize, filetime, sha256, sha256_start, sha256_end FROM ' + tablemain + ' WHERE ' + notDeletedFilter + ' AND filesize = ? AND sha256 = ? AND sha256_start = ? AND sha256_end = ? and filepath = ? AND disk = ?' + (' AND ABS (filetime - {0}'.format(fileToFind['filetime']) +') <=1' if checkTime else ''),(fileToFind['filesize'],fileToFind['sha256'],fileToFind['sha256_start'],fileToFind['sha256_end'], folderFound['folder'] + fileToFind['filepath'][len(folderToFind['folder']):], folderFound['disk'])).fetchone() # ' AND filetime = ?' if checkTime else '?' - does no work, use <> 1 again
-                        # uprint (fileToFind['filepath'],fileToFind['sha256'],folderFound['disk'])
-                        if file_found == None:
+                        # call recursion immediately after finding folder candidate to check smaller folders first and to simplify code (in fact in current practive cases requiring recursion are few and it is probably more processing time efficient to check found folder for a match then if no match call recursion)
+                        # skip found folder from top (start) of path (remove trailing subfolders_separator for cases like /a/a/files)
+                        if inner_comparefolders(folderFound['folder'][0:-subfolders_separator_length]): return True # return if match found already
+
+                        # compare number and total size of files, if match, then need to only compare files in one to the other to ensure full two-way match
+                        qty_found = folderFound['qty']
+                        size_found = folderFound['totalsize']
+                        if qty_found != qty_find:
                             if verbose:
-                                uprint ("NO matched file found for:", fileToFind['filepath'], fileToFind['sha256'], "in:", folderFound['folder'])
-                            break
+                                uprint ("Qty not matched:", folderToFind['folder'], qty_find, 'vs: ', folderFound['folder'], 'on: ', folderFound['disk'], qty_found)
+                            continue # not matched, check next folderFound
+                        if size_found != size_find:
+                            if verbose:
+                                uprint ("Size not matched:", folderToFind['folder'], size_find, 'vs: ', folderFound['folder'], 'on: ', folderFound['disk'], size_found)
+                            continue # not matched, check next folderFound
 
-                    else: # only executed if innner loop did NOT break
-                        if verbose:
-                            uprint ("matched file found for:", fileToFind['filepath'],fileToFind['sha256'],"in:", folderFound['folder'])
-                        match_found = True
+                        file_find = dbConnection.execute('SELECT id, disk, filename, filenamenew, filepath, filesize, filetime, sha256, sha256_start, sha256_end FROM ' + tablepossibleduplicates + ' WHERE ' + notDeletedFilter + ' AND filepath like ?',(folderToFind['folder'] + '%',))
 
-                    if match_found:
-                        break # from FOR as there is no obvious point to search for new originals after one matching is found
+                        for fileToFind in file_find:
 
-                if match_found:
-                    found_qty += 1
-                    found_on_disks += [disk]
+                            file_found = dbConnection.execute('SELECT id, disk, filename, filenamenew, filepath, filesize, filetime, sha256, sha256_start, sha256_end FROM ' + tablemain + ' WHERE ' + notDeletedFilter + ' AND filesize = ? AND sha256 = ? AND sha256_start = ? AND sha256_end = ? and filepath = ? AND disk = ?' + (' AND ABS (filetime - {0}'.format(fileToFind['filetime']) +') <=1' if checkTime else ''),(fileToFind['filesize'],fileToFind['sha256'],fileToFind['sha256_start'],fileToFind['sha256_end'], folderFound['folder'] + fileToFind['filepath'][len(folderToFind['folder']):], folderFound['disk'])).fetchone() # ' AND filetime = ?' if checkTime else '?' - does no work, use <> 1 again
+
+                            if file_found == None: # can compare to None because did .fetchone()
+                                if verbose:
+                                    uprint ("NO matched file found for:", fileToFind['filepath'], fileToFind['sha256'], "in:", folderFound['folder'], 'on: ', folderFound['disk'])
+                                break # from cycle "for fileToFind in file_find:"
+
+                        else: # only executed if "for fileToFind in file_find" loop did NOT break
+                            found_qty += 1
+                            found_on_disks += [disk]
+                            return True # match_found = True # for a folder
+
+                inner_comparefolders('')
 
             # mark for deletion
             if found_qty == len (disks):
                 uprint (folderToFind['folder'][1:-1], ' matched')
                 recommended_for_deletion += 1
                 dbConnection.execute('UPDATE ' + tablepossibleduplicates + ' SET runID = ?, action = "todelete" WHERE filepath like ?',(runID, folderToFind['folder'] + '%'))
-                if updateDuringSearch:
-                    dbConnection.commit() # needed if search for duplicates is made with single set of files, not one against the other; changes results of outer select for FOR and slower than commit at the end; may change outer query qty returned as working due to SQLite functioning, so be careful when searcing single set of data, not one against the other
-
             elif found_qty > 0:
                 uprint ("Folder: ", folderToFind['folder'][1:-1], ' found only on disks: ', found_on_disks)
             else:
