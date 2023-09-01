@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-__version__ = "5.9.2, 2023 Sep 1"
+__version__ = "5.9.3, 2023 Sep 1"
 # Python 3.8, Linux Mint 20.2/21 tested
 # Only some earlier versions IIRC were run on Windows, it might still work or require minor changes to paths (/ vs \).
 
@@ -115,18 +115,17 @@ use_temp_table = args.tmp
 exact_search = args.exact
 action = args.action
 
+togo = True
+
 if disks == None:
     disks = [None] # has length of 1
 
+if MainAction in ['delete', 'deletesame', 'deletefolders'] and diskname != None:
+    print ('- disks option is used with',MainAction,'seems you used --disk')
+    togo = False
+
 if MainAction in ['delete', 'deletesame', 'deletefolders']:
     diskname = 'temp'
-
-#qw = 'err'
-#disks += [qw]
-#print (len(disks))
-#print (disks)
-#end()
-togo = True
 
 # when path is copied from Nemo (ctrl-l) it is w/out trailing /, when typed in bash using tab for completion it is with /
 # code stores part of path excluding paths starting locations in parameters, to ensure consistenty store with leading /
@@ -649,13 +648,18 @@ def comparefolders (tablepossibleduplicates, tablemain):
             for disk in disks:
 
                 # recursion added for e.g. finding /b/ in /a/b/c/b/files (occurences of same searched for folder name on several levels)
+                # recursion added one SELECT per folder found by name match, but changing LIKE to GLOB suprisingly made SELECT run almost instantaneously instead of about 1 second (for large DB w/out and with index on searched field) with LIKE. One can check for need for recursion by e.g. checking if SELECT GLOB *folder*folder* is not empty, but as code works fast already further complications deemed unproductive
                 def inner_comparefolders(skip_start_of_path):
 
                     # nonlocal statements needed to change variables of outer function
                     nonlocal found_qty
                     nonlocal found_on_disks
 
-                    folder_found = dbConnection.execute('SELECT count(id) as qty, sum(filesize) as totalsize, disk, substr(filepath,1,' + str(len(skip_start_of_path)) + '+instr(substr(filepath,' + str(len(skip_start_of_path)+1) + '),"' + folderToFind['folder'] + '")+length("' + folderToFind['folder'] + '")-1) as folder FROM ' + tablemain + ' WHERE ' + notDeletedFilter + ' AND filepath like ? ' + ('' if disk == None else ' AND disk = "' + disk + '"') + ' GROUP BY disk, folder ORDER BY disk, folder',(skip_start_of_path + '%' + folderToFind['folder'] + '%',))
+                    # !!! using GLOB instead of LIKE resulted in ~100 speedup
+                    sql_query = 'SELECT count(id) as qty, sum(filesize) as totalsize, disk, substr(filepath,1,' + str(len(skip_start_of_path)) + '+instr(substr(filepath,' + str(len(skip_start_of_path)+1) + '),"' + folderToFind['folder'] + '")+length("' + folderToFind['folder'] + '")-1) as folder FROM ' + tablemain + ' WHERE ' + notDeletedFilter + ' AND filepath GLOB ?' + ('' if disk == None else ' AND disk = "' + disk + '"') + ' GROUP BY disk, folder ORDER BY disk, folder'
+
+                    if debug: print('<DEBUG> sql_query:', sql_query)
+                    folder_found = dbConnection.execute(sql_query,(skip_start_of_path + '*' + folderToFind['folder'] + '*',))
 
                     for folderFound in folder_found: # one fully matched is enough
 
@@ -663,8 +667,9 @@ def comparefolders (tablepossibleduplicates, tablemain):
 
                         # call recursion immediately after finding folder candidate to check smaller folders first and to simplify code (in fact in current practive cases requiring recursion are few and it is probably more processing time efficient to check found folder for a match then if no match call recursion)
                         # skip found folder from top (start) of path (remove trailing subfolders_separator for cases like /a/a/files)
+                        if debug: print('- before', datetime.today())
                         if inner_comparefolders(folderFound['folder'][0:-subfolders_separator_length]): return True # return if match found already
-
+                        if debug: print('- after', datetime.today())
                         # compare number and total size of files, if match, then need to only compare files in one to the other to ensure full two-way match
                         qty_found = folderFound['qty']
                         size_found = folderFound['totalsize']
@@ -677,7 +682,7 @@ def comparefolders (tablepossibleduplicates, tablemain):
                                 uprint ("Size not matched:", folderToFind['folder'], size_find, 'vs: ', folderFound['folder'], 'on: ', folderFound['disk'], size_found)
                             continue # not matched, check next folderFound
 
-                        file_find = dbConnection.execute('SELECT id, disk, filename, filenamenew, filepath, filesize, filetime, sha256, sha256_start, sha256_end FROM ' + tablepossibleduplicates + ' WHERE ' + notDeletedFilter + ' AND filepath like ?',(folderToFind['folder'] + '%',))
+                        file_find = dbConnection.execute('SELECT id, disk, filename, filenamenew, filepath, filesize, filetime, sha256, sha256_start, sha256_end FROM ' + tablepossibleduplicates + ' WHERE ' + notDeletedFilter + ' AND filepath GLOB ?',(folderToFind['folder'] + '*',))
 
                         for fileToFind in file_find:
 
@@ -699,7 +704,7 @@ def comparefolders (tablepossibleduplicates, tablemain):
             if found_qty == len (disks):
                 uprint (folderToFind['folder'][1:-1], ' matched')
                 recommended_for_deletion += 1
-                dbConnection.execute('UPDATE ' + tablepossibleduplicates + ' SET runID = ?, action = "todelete" WHERE filepath like ?',(runID, folderToFind['folder'] + '%'))
+                dbConnection.execute('UPDATE ' + tablepossibleduplicates + ' SET runID = ?, action = "todelete" WHERE filepath GLOB ?',(runID, folderToFind['folder'] + '*'))
             elif found_qty > 0:
                 uprint ("Folder: ", folderToFind['folder'][1:-1], ' found only on disks: ', found_on_disks)
             else:
@@ -1283,26 +1288,7 @@ if MainAction == 'sync':
 # https://stackoverflow.com/questions/2081640/what-exactly-do-u-and-r-string-flags-do-in-python-and-what-are-raw-string-l
 # use raw strings
 
-
-# diskMount = r'J:/' if systemType == 'Windows' else r'/media/alex/4tb-57/'
-# diskMount = r'/media/alex/4tb-57/' if systemType == 'Linux' else r'J:/' 
-
 #How to get table names using sqlite3 through python?
 #res = conn.execute("SELECT name FROM sqlite_master WHERE type='table';")
 #for name in res:
 #    print name[0]
-
-
-    '''srcfile = '/home/alex/Documents/python/test.py'
-    dstfile = '/home/alex/Documents/python/1/1/1/12341/1hkl/1/132543243/test.py'
-
-    print (os.path.isabs(srcfile))
-    #assert os.path.isabs(srcfile)
-    dstdir =  os.path.dirname(dstfile)
-
-    os.makedirs(dstdir) # create all directories, raise an error if it already exists
-    shutil.copyfile2(srcfile, dstfile)
-
-    end(startTime, dbConnection)'''
-
-
