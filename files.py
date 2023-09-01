@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-__version__ = "5.9, 2023 August 31"
+__version__ = "5.9.1, 2023 Sep 1"
 # Python 3.8, Linux Mint 20.2/21 tested
 # Only some earlier versions IIRC were run on Windows, it might still work or require minor changes to paths (/ vs \).
 
@@ -10,7 +10,6 @@ __version__ = "5.9, 2023 August 31"
 # Sync folders using stored files stats
 # Other commands, see --help, some details might be in changelog
 # SQL code is not safe against injections, folders names are not expected to contain double quotation symbols
-
 # TO DO:
 # 0. code to identify duplicate folders as many software folders contain some of same files, delete only if whole folder matches - DONE ver 5.3
 # 1. notUsefulEnd - change from list of items [] to any combination of items from list
@@ -198,9 +197,19 @@ if togo == False:
 
 tablename_main = 'filesdata'
 tablename_temp = 'filesdata_todelete'
+notDeletedFilter = '(action <> "deleted" AND action <> "todelete" OR action is NULL)'
     
 # https://stackoverflow.com/questions/110362/how-can-i-find-the-current-os-in-python
 systemType = platform.system()
+if systemType == 'Windows':
+    subfolders_separator = '\\'
+elif systemType == 'Linux':
+    subfolders_separator = '/'
+else:
+    print ('Neither Windows nor Linux, not sure if the code will work properly, exiting...')
+    end ()
+subfolders_separator_length = len(subfolders_separator)
+
 if dblocation == './temp.db':
     if systemType == 'Windows':
         dblocation = 'temp.db' # r'a:/listfiles.db'.replace ('\\','/')
@@ -492,7 +501,6 @@ def comparefiles (tablepossibleduplicates, tablemain):
     add_index_db_table_sha256 (dbConnection, tablemain)
     
     runID = 'pc 1'
-    deletionFilter = '(action <> "deleted" AND action <> "todelete" OR action is NULL)'
 
     # if folders overlap, need to update database continuously else duplicates will be deleted both - NOT APPLICABLE HERE, HENCE FALSE
     # if True not tested after code was modified
@@ -512,7 +520,7 @@ def comparefiles (tablepossibleduplicates, tablemain):
     recommended_for_deletion = 0
     recommendedNameChange = 0
 
-    myQuery = 'SELECT id, disk, filename, filenamenew, filepath, filesize, filetime, sha256, sha256_start, sha256_end FROM ' + tablepossibleduplicates + ' WHERE ' + deletionFilter
+    myQuery = 'SELECT id, disk, filename, filenamenew, filepath, filesize, filetime, sha256, sha256_start, sha256_end FROM ' + tablepossibleduplicates + ' WHERE ' + notDeletedFilter
 
     c_find = dbConnection.execute(myQuery)
 
@@ -526,7 +534,7 @@ def comparefiles (tablepossibleduplicates, tablemain):
 
                 match_found = False
 
-                c_found = dbConnection.execute('SELECT id, disk, filename, filenamenew, filepath, filesize, filetime FROM ' + tablemain + ' WHERE ' + deletionFilter + ' AND filesize = ? AND sha256 = ? AND sha256_start = ? AND sha256_end = ?' + ('' if disk == None else ' AND disk = "' + disk +'"') + (' AND ABS (filetime - {0}'.format(rowToFind['filetime']) +') <=1' if checkTime else ''),(rowToFind['filesize'],rowToFind['sha256'],rowToFind['sha256_start'],rowToFind['sha256_end'])) # ' AND filetime = ?' if checkTime else '?' - does no work, use <> 1 again
+                c_found = dbConnection.execute('SELECT id, disk, filename, filenamenew, filepath, filesize, filetime FROM ' + tablemain + ' WHERE ' + notDeletedFilter + ' AND filesize = ? AND sha256 = ? AND sha256_start = ? AND sha256_end = ?' + ('' if disk == None else ' AND disk = "' + disk +'"') + (' AND ABS (filetime - {0}'.format(rowToFind['filetime']) +') <=1' if checkTime else ''),(rowToFind['filesize'],rowToFind['sha256'],rowToFind['sha256_start'],rowToFind['sha256_end'])) # ' AND filetime = ?' if checkTime else '?' - does no work, use <> 1 again
 
                 for rowFound in c_found:
 
@@ -603,7 +611,7 @@ def comparefiles (tablepossibleduplicates, tablemain):
 
 # ----------------------------------------------------------------------------------------------------------------------------------------------------#
 #
-# compare folders along with all their contents
+# compare folders along with all their contents (uses subfolders_separator to be potentially Windows ready)
 
 def comparefolders (tablepossibleduplicates, tablemain):
 
@@ -616,7 +624,6 @@ def comparefolders (tablepossibleduplicates, tablemain):
     add_index_db_table_sha256 (dbConnection, tablemain)
 
     runID=strftime("%Y-%m-%d %H:%M:%S", localtime())
-    deletionFilter = '(action <> "deleted" AND action <> "todelete" OR action is NULL)'
 
     # if folders overlap, need to update database continuously else duplicates will be deleted both - NOT APPLICABLE HERE, HENCE FALSE
     # if True not tested after code was modified
@@ -625,41 +632,46 @@ def comparefolders (tablepossibleduplicates, tablemain):
     processed = 0
     recommended_for_deletion = 0
 
-    # folder != "/" added to skip that SELECT result in case files are present on top level, not folders only
-    myQuery = 'SELECT distinct substr(filepath,1,instr(substr(filepath,2),"/")+1) as folder FROM ' + tablepossibleduplicates + ' WHERE folder != "/" and ' + deletionFilter
-    folder_tofind = dbConnection.execute(myQuery)
+    # folder != "/" (later changed to more general "not equal to subfolders_separator") added to skip single files on top level
+    # string functions in SQLite set? 1st character as 1 (Python as 0)
+    # line below selects top level folders along with subfolders_separator before and after
+    myQuery = 'SELECT count(id) as qty, sum(filesize) as totalsize, substr(filepath,1,instr(substr(filepath,' + str(subfolders_separator_length + 1) + '),"' + subfolders_separator + '")+' + str(subfolders_separator_length*2-1) + ') as folder FROM ' + tablepossibleduplicates + ' WHERE folder != "' + subfolders_separator + '" and ' + notDeletedFilter + ' GROUP BY folder ORDER BY folder'
+    folders_tofind = dbConnection.execute(myQuery)
 
-    for folderToFind in folder_tofind:
-        uprint ("  Processing folder: ", folderToFind['folder'][1:-1])
+    for folderToFind in folders_tofind:
+        uprint ("  processing folder: ", folderToFind['folder'][subfolders_separator_length:-subfolders_separator_length])
         found_qty = 0
         found_on_disks = []
+        qty_find = folderToFind['qty']
+        size_find = folderToFind['totalsize']
 
         try:
 
             for disk in disks:
 
                 match_found = False
-                folder_found = dbConnection.execute('SELECT distinct disk,substr(filepath,1,instr(filepath,"' + folderToFind['folder'] + '")+length("' + folderToFind['folder'] + '")-1) as folder FROM ' + tablemain + ' WHERE ' + deletionFilter + ' AND filepath like ? ' + ('' if disk == None else ' AND disk = "' + disk +'"'),('%' + folderToFind['folder'] + '%',))
-
-                # for comparing qty of files later
-                row = dbConnection.execute('SELECT count(id) as qty FROM ' + tablepossibleduplicates + ' WHERE ' + deletionFilter + ' AND filepath like ?',(folderToFind['folder'] + '%',)).fetchone()
-                qty_find = row['qty']
+                disk_filter = '' if disk == None else ' AND disk = "' + disk + '"'
+                folder_found = dbConnection.execute('SELECT count(id) as qty, sum(filesize) as totalsize, disk, substr(filepath,1,instr(filepath,"' + folderToFind['folder'] + '")+length("' + folderToFind['folder'] + '")-1) as folder FROM ' + tablemain + ' WHERE ' + notDeletedFilter + ' AND filepath like ? ' + ('' if disk == None else ' AND disk = "' + disk + '"') + ' GROUP BY disk, folder ORDER BY disk, folder',('%' + folderToFind['folder'] + '%',))
 
                 for folderFound in folder_found: # one fully matched is enough
 
-                    # compare number of files, if match, then need to only compare files in one to the other to ensure full two-way match
-                    row = dbConnection.execute('SELECT count(id) as qty FROM ' + tablemain + ' WHERE ' + deletionFilter + ' AND filepath like ? AND disk = ?',(folderFound['folder'] + '%',folderFound['disk'])).fetchone()
-                    qty_found = row['qty']
+                    # compare number and total size of files, if match, then need to only compare files in one to the other to ensure full two-way match
+                    qty_found = folderFound['qty']
+                    size_found = folderFound['totalsize']
                     if qty_found != qty_find:
                         if verbose:
-                            uprint ("Qty not matched:", folderToFind['folder'], qty_find, folderFound['folder'], qty_found)
+                            uprint ("Qty not matched:", folderToFind['folder'], qty_find, 'vs: ', folderFound['folder'], 'on: ', folderFound['disk'], qty_found)
+                        continue # not matched, check next folderFound
+                    if size_found != size_find:
+                        if verbose:
+                            uprint ("Size not matched:", folderToFind['folder'], size_find, 'vs: ', folderFound['folder'], 'on: ', folderFound['disk'], size_found)
                         continue # not matched, check next folderFound
 
-                    file_find = dbConnection.execute('SELECT id, disk, filename, filenamenew, filepath, filesize, filetime, sha256, sha256_start, sha256_end FROM ' + tablepossibleduplicates + ' WHERE ' + deletionFilter + ' AND filepath like ?',(folderToFind['folder'] + '%',))
+                    file_find = dbConnection.execute('SELECT id, disk, filename, filenamenew, filepath, filesize, filetime, sha256, sha256_start, sha256_end FROM ' + tablepossibleduplicates + ' WHERE ' + notDeletedFilter + ' AND filepath like ?',(folderToFind['folder'] + '%',))
 
                     for fileToFind in file_find:
 
-                        file_found = dbConnection.execute('SELECT id, disk, filename, filenamenew, filepath, filesize, filetime, sha256, sha256_start, sha256_end FROM ' + tablemain + ' WHERE ' + deletionFilter + ' AND filesize = ? AND sha256 = ? AND sha256_start = ? AND sha256_end = ? and filepath = ? AND disk = ?' + (' AND ABS (filetime - {0}'.format(fileToFind['filetime']) +') <=1' if checkTime else ''),(fileToFind['filesize'],fileToFind['sha256'],fileToFind['sha256_start'],fileToFind['sha256_end'], folderFound['folder'] + fileToFind['filepath'][len(folderToFind['folder']):], folderFound['disk'])).fetchone() # ' AND filetime = ?' if checkTime else '?' - does no work, use <> 1 again
+                        file_found = dbConnection.execute('SELECT id, disk, filename, filenamenew, filepath, filesize, filetime, sha256, sha256_start, sha256_end FROM ' + tablemain + ' WHERE ' + notDeletedFilter + ' AND filesize = ? AND sha256 = ? AND sha256_start = ? AND sha256_end = ? and filepath = ? AND disk = ?' + (' AND ABS (filetime - {0}'.format(fileToFind['filetime']) +') <=1' if checkTime else ''),(fileToFind['filesize'],fileToFind['sha256'],fileToFind['sha256_start'],fileToFind['sha256_end'], folderFound['folder'] + fileToFind['filepath'][len(folderToFind['folder']):], folderFound['disk'])).fetchone() # ' AND filetime = ?' if checkTime else '?' - does no work, use <> 1 again
                         # uprint (fileToFind['filepath'],fileToFind['sha256'],folderFound['disk'])
                         if file_found == None:
                             if verbose:
@@ -1116,7 +1128,6 @@ def markduplicates (tablemain):
     # if 'same' file found script marks file as 'todelete'
 
     runID = 'pc 1'
-    deletionFilter = '(action <> "deleted" AND action <> "todelete" OR action is NULL)'
 
     checkSize = 1 # if 1 exact match by size, otherwise as fraction needed for match - usefull for mp3 as metadata- not used now
 
@@ -1125,7 +1136,7 @@ def markduplicates (tablemain):
     recommended_for_deletion = 0
     recommendedNameChange = 0
 
-    myQuery = 'SELECT id, disk, filename, filenamenew, filepath, filesize, filetime, sha256, sha256_start, sha256_end FROM ' + tablemain + ' WHERE ' + deletionFilter + ' ORDER BY filesize DESC, sha256 ASC, filename DESC, filetime DESC'
+    myQuery = 'SELECT id, disk, filename, filenamenew, filepath, filesize, filetime, sha256, sha256_start, sha256_end FROM ' + tablemain + ' WHERE ' + notDeletedFilter + ' ORDER BY filesize DESC, sha256 ASC, filename DESC, filetime DESC'
 
     c_find = dbConnection.execute(myQuery)
 
