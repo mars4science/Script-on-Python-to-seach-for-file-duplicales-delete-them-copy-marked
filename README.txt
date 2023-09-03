@@ -10,12 +10,12 @@ Only some earlier versions IIRC were run on Windows, it might still work or requ
 
 ##### Below is output of `./files.py --help` as pasted unformatted into text editor (might look better as bash output in terminal):
 
-usage: files.py [-h] [--version] [--verbose] [--db DB] [--files FILES]
-                [--files_d FILES_D] [--files_c FILES_C] [--disk DISK]
-                [--disk_c DISK_C] [--disks DISKS] [--pattern PATTERN]
-                [--action ACTION] [--notchecktime] [--notmatchtime] [--mne]
-                [--mnb] [--nmn] [--simulateonly] [--tmp] [--exact] [--rename]
-                [--qty QTY] [--parts PARTS]
+usage: files.py [-h] [--version] [--verbose] [--debug] [--db DB]
+                [--files FILES] [--files_d FILES_D] [--files_c FILES_C]
+                [--disk DISK] [--disk_c DISK_C] [--disks DISKS]
+                [--pattern PATTERN] [--action ACTION] [--notchecktime]
+                [--notmatchtime] [--mne] [--mnb] [--nmn] [--simulateonly]
+                [--tmp] [--exact] [--rename] [--qty QTY] [--parts PARTS]
                 {read,add,searchname,searchpath,totals,delete,deletemarked,compareonly,change,copy,deletesame,makedirs,sync,sync2,deletefolders}
 
 Process file structures, deleting duplicates renaming retained files is useful if additional info is not contained in extention - part of file name after last . symbol; paths better be passed as absolute
@@ -41,6 +41,7 @@ options:
   -h, --help            show this help message and exit
   --version             show program's version number and exit
   --verbose             output additional info, default: no output
+  --debug               output technical additional info, default: no output
   --db DB               full path to database location, default = temp.db in current folder
   --files FILES         full path to the only/main file structure
   --files_d FILES_D     full path to other file structure - where objects need to be deleted

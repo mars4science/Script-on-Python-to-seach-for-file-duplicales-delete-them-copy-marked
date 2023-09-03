@@ -637,18 +637,30 @@ def comparefolders (tablepossibleduplicates, tablemain):
     folders_tofind = dbConnection.execute(myQuery)
 
     for folderToFind in folders_tofind:
-        uprint ("  processing folder: ", folderToFind['folder'][subfolders_separator_length:-subfolders_separator_length])
-        found_qty = 0
-        found_on_disks = []
+        name_find = folderToFind['folder']
+        name_find_noseps = name_find[subfolders_separator_length:-subfolders_separator_length]
+        uprint ("  processing folder: ", name_find_noseps)
         qty_find = folderToFind['qty']
         size_find = folderToFind['totalsize']
+
+        found_qty = 0
+        found_on_disks = []        
 
         try:
 
             for disk in disks:
 
                 # recursion added for e.g. finding /b/ in /a/b/c/b/files (occurences of same searched for folder name on several levels)
-                # recursion added one SELECT per folder found by name match, but changing LIKE to GLOB suprisingly made SELECT run almost instantaneously instead of about 1 second (for large DB w/out and with index on searched field) with LIKE. One can check for need for recursion by e.g. checking if SELECT GLOB *folder*folder* is not empty, but as code works fast already further complications deemed unproductive
+                # recursion added one SELECT per folder found by name match, but changing LIKE to GLOB suprisingly made SELECT run almost instantaneously instead of about 1 second (for large DB w/out and with index on searched field) with LIKE. 
+
+                # Check for need for recursion by  checking if SELECT GLOB *folder*folder* is not empty
+                sql_query = 'SELECT filepath FROM ' + tablemain + ' WHERE ' + notDeletedFilter + ' AND (filepath GLOB ? OR filepath GLOB ?)' + ('' if disk == None else ' AND disk = "' + disk + '"')
+                multiple_levels_found = dbConnection.execute(sql_query,('*' + name_find + '*'+ name_find + '*','*' + name_find[0:-subfolders_separator_length] + name_find + '*',)).fetchone()
+                if multiple_levels_found == None: recursion_needed = False
+                else: recursion_needed = True
+
+                if debug: print('<DEBUG> recursion_needed:', recursion_needed)
+
                 def inner_comparefolders(skip_start_of_path):
 
                     # nonlocal statements needed to change variables of outer function
@@ -656,10 +668,11 @@ def comparefolders (tablepossibleduplicates, tablemain):
                     nonlocal found_on_disks
 
                     # !!! using GLOB instead of LIKE resulted in ~100 speedup
-                    sql_query = 'SELECT count(id) as qty, sum(filesize) as totalsize, disk, substr(filepath,1,' + str(len(skip_start_of_path)) + '+instr(substr(filepath,' + str(len(skip_start_of_path)+1) + '),"' + folderToFind['folder'] + '")+length("' + folderToFind['folder'] + '")-1) as folder FROM ' + tablemain + ' WHERE ' + notDeletedFilter + ' AND filepath GLOB ?' + ('' if disk == None else ' AND disk = "' + disk + '"') + ' GROUP BY disk, folder ORDER BY disk, folder'
+                    sql_query = 'SELECT count(id) as qty, sum(filesize) as totalsize, disk, substr(filepath,1,' + str(len(skip_start_of_path)) + '+instr(substr(filepath,' + str(len(skip_start_of_path)+1) + '),"' + name_find + '")+length("' + name_find + '")-1) as folder FROM ' + tablemain + ' WHERE ' + notDeletedFilter + ' AND filepath GLOB ?' + ('' if disk == None else ' AND disk = "' + disk + '"') + ' GROUP BY disk, folder ORDER BY disk, folder'
 
                     if debug: print('<DEBUG> sql_query:', sql_query)
-                    folder_found = dbConnection.execute(sql_query,(skip_start_of_path + '*' + folderToFind['folder'] + '*',))
+
+                    folder_found = dbConnection.execute(sql_query,(skip_start_of_path + '*' + name_find + '*',))
 
                     for folderFound in folder_found: # one fully matched is enough
 
@@ -667,26 +680,28 @@ def comparefolders (tablepossibleduplicates, tablemain):
 
                         # call recursion immediately after finding folder candidate to check smaller folders first and to simplify code (in fact in current practive cases requiring recursion are few and it is probably more processing time efficient to check found folder for a match then if no match call recursion)
                         # skip found folder from top (start) of path (remove trailing subfolders_separator for cases like /a/a/files)
-                        if debug: print('- before', datetime.today())
-                        if inner_comparefolders(folderFound['folder'][0:-subfolders_separator_length]): return True # return if match found already
-                        if debug: print('- after', datetime.today())
+                        if recursion_needed == True:
+                            if debug: print('- before', datetime.today())
+                            if inner_comparefolders(folderFound['folder'][0:-subfolders_separator_length]): return True # return if match found already
+                            if debug: print('- after', datetime.today())
+
                         # compare number and total size of files, if match, then need to only compare files in one to the other to ensure full two-way match
                         qty_found = folderFound['qty']
                         size_found = folderFound['totalsize']
                         if qty_found != qty_find:
                             if verbose:
-                                uprint ("Qty not matched:", folderToFind['folder'], qty_find, 'vs: ', folderFound['folder'], 'on: ', folderFound['disk'], qty_found)
+                                uprint ("Qty not matched:", name_find, qty_find, 'vs: ', folderFound['folder'], 'on: ', folderFound['disk'], qty_found)
                             continue # not matched, check next folderFound
                         if size_found != size_find:
                             if verbose:
-                                uprint ("Size not matched:", folderToFind['folder'], size_find, 'vs: ', folderFound['folder'], 'on: ', folderFound['disk'], size_found)
+                                uprint ("Size not matched:", name_find, size_find, 'vs: ', folderFound['folder'], 'on: ', folderFound['disk'], size_found)
                             continue # not matched, check next folderFound
 
-                        file_find = dbConnection.execute('SELECT id, disk, filename, filenamenew, filepath, filesize, filetime, sha256, sha256_start, sha256_end FROM ' + tablepossibleduplicates + ' WHERE ' + notDeletedFilter + ' AND filepath GLOB ?',(folderToFind['folder'] + '*',))
+                        file_find = dbConnection.execute('SELECT id, disk, filename, filenamenew, filepath, filesize, filetime, sha256, sha256_start, sha256_end FROM ' + tablepossibleduplicates + ' WHERE ' + notDeletedFilter + ' AND filepath GLOB ?',(name_find + '*',))
 
                         for fileToFind in file_find:
 
-                            file_found = dbConnection.execute('SELECT id, disk, filename, filenamenew, filepath, filesize, filetime, sha256, sha256_start, sha256_end FROM ' + tablemain + ' WHERE ' + notDeletedFilter + ' AND filesize = ? AND sha256 = ? AND sha256_start = ? AND sha256_end = ? and filepath = ? AND disk = ?' + (' AND ABS (filetime - {0}'.format(fileToFind['filetime']) +') <=1' if checkTime else ''),(fileToFind['filesize'],fileToFind['sha256'],fileToFind['sha256_start'],fileToFind['sha256_end'], folderFound['folder'] + fileToFind['filepath'][len(folderToFind['folder']):], folderFound['disk'])).fetchone() # ' AND filetime = ?' if checkTime else '?' - does no work, use <> 1 again
+                            file_found = dbConnection.execute('SELECT id, disk, filename, filenamenew, filepath, filesize, filetime, sha256, sha256_start, sha256_end FROM ' + tablemain + ' WHERE ' + notDeletedFilter + ' AND filesize = ? AND sha256 = ? AND sha256_start = ? AND sha256_end = ? and filepath = ? AND disk = ?' + (' AND ABS (filetime - {0}'.format(fileToFind['filetime']) +') <=1' if checkTime else ''),(fileToFind['filesize'],fileToFind['sha256'],fileToFind['sha256_start'],fileToFind['sha256_end'], folderFound['folder'] + fileToFind['filepath'][len(name_find):], folderFound['disk'])).fetchone() # ' AND filetime = ?' if checkTime else '?' - does no work, use <> 1 again
 
                             if file_found == None: # can compare to None because did .fetchone()
                                 if verbose:
@@ -702,13 +717,13 @@ def comparefolders (tablepossibleduplicates, tablemain):
 
             # mark for deletion
             if found_qty == len (disks):
-                uprint (folderToFind['folder'][1:-1], ' matched')
+                uprint (name_find_noseps, ' matched')
                 recommended_for_deletion += 1
-                dbConnection.execute('UPDATE ' + tablepossibleduplicates + ' SET runID = ?, action = "todelete" WHERE filepath GLOB ?',(runID, folderToFind['folder'] + '*'))
+                dbConnection.execute('UPDATE ' + tablepossibleduplicates + ' SET runID = ?, action = "todelete" WHERE filepath GLOB ?',(runID, name_find + '*'))
             elif found_qty > 0:
-                uprint ("Folder: ", folderToFind['folder'][1:-1], ' found only on disks: ', found_on_disks)
+                uprint ("Folder: ", name_find_noseps, ' found only on disks: ', found_on_disks)
             else:
-                uprint ("Folder: ", folderToFind['folder'][1:-1], ' NOT matched')
+                uprint ("Folder: ", name_find_noseps, ' NOT matched')
 
         except Exception as e:
             uprint ("(Un?)expected error: " + str(e))
