@@ -1,3 +1,22 @@
+# 5.9.4, 2023 Sep 3
+# added check if recursion is needed during search for duplicate folders 
+
+# 5.9.3, 2023 Sep 1
+# changed LIKE to GLOB in SQL queries of comparefolders (for duplicate folders) and code started to work again about as fast as before recursion
+
+# 5.9.2, 2023 Sep 1
+# recursion added to search for duplicate folders for e.g. finding /b/ in /a/b/c/b/files (occurences of same searched for folder name on several levels) - code again became about as slow as before recent optimizations
+# added --debug option for output of more technical processing info 
+
+# 5.9.1, 2023 Sep 1
+# optimized comparefolders: changed SQL calls to be called once per find found - some cases of multiple same name folders for large DB became faster ~100 times; during that rewrote parts of comparefolders to use subfolders_separator to be potentially Windows ready
+
+# 5.9, 2023 Aug 31
+# first optimization of comparefolders - moving one SQL query to execute once for every folder to find not for every folder found for every folder to find
+
+# 5.8, 2023 Aug 31
+# added search in path to search in name
+
 # 5.7, 2023 July 15
 # added Ctrl-C signal suspension in functions copymarked and sync_one_way to have both changes to files on disk and database entries made before intettuption occurs (not interrupted between)
 
