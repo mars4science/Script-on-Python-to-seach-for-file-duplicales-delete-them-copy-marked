@@ -1,3 +1,6 @@
+# 5.10, 2023 Sep 22
+# for read command added check of existence of files of given disk in db (if disk is in db already one might make duplicate entries by reading same files again)
+
 # 5.9.4, 2023 Sep 3
 # added check if recursion is needed during search for duplicate folders 
 

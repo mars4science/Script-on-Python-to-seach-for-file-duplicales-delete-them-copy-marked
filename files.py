@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-__version__ = "5.9.4, 2023 Sep 3"
+__version__ = "5.10, 2023 Sep 22"
 # Python 3.8, Linux Mint 20.2/21 tested
 # Only some earlier versions IIRC were run on Windows, it might still work or require minor changes to paths (/ vs \).
 
@@ -127,6 +127,11 @@ if MainAction in ['delete', 'deletesame', 'deletefolders'] and diskname != None:
 if MainAction in ['delete', 'deletesame', 'deletefolders']:
     diskname = 'temp'
 
+if Path(dblocation).exists():
+    db_not_empty = True
+else:
+    db_not_empty = False
+
 # when path is copied from Nemo (ctrl-l) it is w/out trailing /, when typed in bash using tab for completion it is with /
 # code stores part of path excluding paths starting locations in parameters, to ensure consistenty store with leading /
 # remove trailing / if was in parameters
@@ -145,7 +150,7 @@ if MainAction in ['add', 'searchname', 'searchpath', 'totals', 'change', 'copy',
     print ('- path to database ("--db") is required for this command, if you want to use ./temp.db, please give another path version to it. e.g. full path')
     togo = False
 
-if MainAction in ['add', 'searchname', 'searchpath', 'totals', 'change', 'copy', 'deletemarked', 'makedirs', 'sync', 'sync2'] and not Path(dblocation).exists():
+if MainAction in ['add', 'searchname', 'searchpath', 'totals', 'change', 'copy', 'deletemarked', 'makedirs', 'sync', 'sync2'] and not db_not_empty:
     print ("- path --db '%s' not found, typo?" % dblocation)
     togo = False
 
@@ -173,7 +178,7 @@ if MainAction in ['delete', 'deletefolders']:
     if not ((full_path == None) ^ (dblocation == './temp.db')): # ^ is logical xor here
         print ('- either path to file structure (--files) or database (--db) to check againt is required for this command (not both though)')
         togo = False
-    if dblocation != './temp.db' and not Path(dblocation).exists():
+    if dblocation != './temp.db' and not db_not_empty:
         print ("- path --db '%s' not found, typo?" % dblocation)
         togo = False
 
@@ -238,7 +243,7 @@ if MainAction in ['add', 'copy', 'deletemarked', 'makedirs', 'add', 'sync', 'syn
     if row == None:
         uprint("--disk '%s' not found in db '%s', terminating...\n" % (diskname,dblocation))
         if MainAction in ['add']:
-            uprint("maybe use read command?")
+            uprint("maybe use read command?\n")
         end(startTime, dbConnection)
 
 if MainAction in ['sync', 'sync2']:
@@ -253,6 +258,13 @@ if MainAction in ['delete', 'deletefolders'] and dblocation != './temp.db' and d
         if row == None:
             uprint("--disk '%s' not found in db '%s', terminating...\n" % (disk,dblocation))
             end(startTime, dbConnection)
+
+if MainAction in ['read'] and db_not_empty:
+    row = dbConnection.execute('SELECT * FROM ' + tablename_main + ' WHERE disk = "' + diskname + '" limit 1').fetchone()
+    if row != None:
+        uprint("--entries for disk '%s' found in db '%s', terminating..." % (diskname,dblocation))
+        uprint("maybe use add command?\n")
+        end(startTime, dbConnection)
 
 # ----------------------------------------------------------------------------------------------------------------------------------------------------#
 # to copy files set to be copied (field 'action' is 'tocopy') - see help for detailes
