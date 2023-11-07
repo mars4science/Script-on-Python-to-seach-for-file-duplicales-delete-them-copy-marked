@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-__version__ = "5.10, 2023 Sep 22"
+__version__ = "5.11, 2023 Nov 7"
 # Python 3.8, Linux Mint 20.2/21 tested
 # Only some earlier versions IIRC were run on Windows, it might still work or require minor changes to paths (/ vs \).
 
@@ -11,15 +11,16 @@ __version__ = "5.10, 2023 Sep 22"
 # Other commands, see --help, some details might be in changelog
 # SQL code is not safe against injections, folders names are not expected to contain double quotation symbols
 # TO DO:
-# 0. code to identify duplicate folders as many software folders contain some of same files, delete only if whole folder matches - DONE ver 5.3
+# 0. + code to identify duplicate folders as many software folders contain some of same files, delete only if whole folder matches - DONE ver 5.3
 # 1. notUsefulEnd - change from list of items [] to any combination of items from list
-# 2. implement deleting directly location against location - DONE ver 3.3
+# 2. + implement deleting directly location against location - DONE ver 3.3
 # 3. test on deleting from path which contained in database - duplicates inside one location, not one against the other
 # 4. check on that:
 # if updateDuringSearch:
 # dbConnection.commit() needed if search for duplicates is made with single set of files, not one against the other; 
 # changes results of outer select for FOR and slower than commit at the end; 
 # may change outer query qty returned as working due to SQLite functioning, so be careful when searcing single set of data, not one against the other
+# 5. implement some easy to use code to move/rename files
 
 from files_functions import uprint, end, make_db_table, delete_db_table, add_index_db_table_sha256, add_index_db_table_filepath 
 import os
@@ -378,6 +379,10 @@ def copymarked(disk_name, source_path, dest_path):
     if notcopiedasfailed > 0:
         uprint("  To see: database, entries with 'not copied as copy failed' in action field.\n")
     print ()
+    if notcopiedasnotfound>0 or notcopiedaswerethere>0 or notcopiedasfailed>0:
+        return False
+    else:
+        return True
 
 
 if MainAction == 'copy':
@@ -1053,6 +1058,10 @@ def addfiles(disk_name, files_path, tablename, checksame):
     if links_updated > 0:
         print ('Number of links updated                : {:,.0f}'.format(links_updated).replace(',', ' '))
     print ()
+    if added_files != processed_files:
+        return False
+    else:
+        return True
 
 # ----------------------------------------------------------------------------------------------------------------------------------------------------#
 
@@ -1255,6 +1264,11 @@ def sync_one_way(source_path, source_disk, dest_path, dest_disk):
     uprint("----- sync from '" + source_path + "' to '" + dest_path + "' -----\n")
     uprint("updating table  '" + tablename_main + "' setting action='tocopy' for files present in source but absent in destination (not same full path and checksum)\n")
 
+    if list(Path(dest_path).iterdir()) == []: # empty
+        dest_path_empty_initially = True
+    else:
+        dest_path_empty_initially = False
+
     # trying to make queries safe against injection attack, %s for MySQL and Postgre, ? for SQLite (for SQLite table name substition with ? resulted in error)
     # last extra sometimes unneeded binding is not OK too (so FileNameEx is not a binding too): "Incorrect number of bindings supplied. The current statement uses 3, and there are 4 supplied." (One might have two lines with execute or write '%' (any) in FileNameEx to possibly reduce SQL efficiency as workarounds.)
 
@@ -1262,8 +1276,8 @@ def sync_one_way(source_path, source_disk, dest_path, dest_disk):
     c = dbConnection.execute('UPDATE "' + tablename_main + '" set action="tocopy" where id not in (select DISTINCT a.id from "' + tablename_main + '" as a join "' + tablename_main + '" as b on a.filepath=b.filepath where a.sha256=b.sha256 and a.disk=? and b.disk=?) and disk=?'+ ('' if (FileNameEx is None) else ' and filepath like "' + FileNameEx + '"'), (source_disk,dest_disk,source_disk,))
     dbConnection.commit()
 
-    copymarked(source_disk,source_path,dest_path)
-    addfiles(dest_disk, dest_path, tablename_main, True)
+    copy_result = copymarked(source_disk,source_path,dest_path)
+    add_result = addfiles(dest_disk, dest_path, tablename_main, True)
 
     uprint("Checking correctness of copy...")
     c = dbConnection.execute('UPDATE "' + tablename_main + '" set action="copied_wrong_sha" where id not in (select DISTINCT a.id from "' + tablename_main + '" as a join "' + tablename_main + '" as b on a.filepath=b.filepath where a.sha256=b.sha256 and a.disk=? and b.disk=?) and disk=? and action="copied"', (source_disk,dest_disk,source_disk,))
@@ -1277,6 +1291,10 @@ def sync_one_way(source_path, source_disk, dest_path, dest_disk):
     else:
         uprint(" ! Number of found errors : {:,.0f}".format(qty_err).replace(',', ' '))
         uprint("To see: database, entries with 'copied_wrong_sha' in action field.\n")
+    if not copy_result:
+        uprint(" ! Seems there have been irregularities (not all copied) during copying of files, details in section <- copying -> above.\n")
+    if not add_result and dest_path_empty_initially: # if and only if destination folder was empty at the start of this sync function then numnber of added files is expected to equal number of read files
+        uprint(" ! Seems there have been irregularities (added != read) during adding of newly copied files, details in section <- adding -> above.\n")
 
 
 # assumes initial read of new files for source_disk

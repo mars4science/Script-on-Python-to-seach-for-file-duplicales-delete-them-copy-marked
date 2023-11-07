@@ -1,4 +1,5 @@
-﻿# Python 3.5 tested
+#!/usr/bin/python3
+# Python 3.5 tested
 
 import os
 import sys
@@ -33,7 +34,7 @@ def end(startTime = None, dbConnection = None):
         print ('Duration:')
         print (str(timedelta(seconds=datetime.today().timestamp() - startTime.timestamp()))) # displays days too if > 24 hours
 
-#other methods are my previous attempts 
+#other methods are my previous attempts
 #        print (time.strftime("%H:%M:%S", time.gmtime(datetime.today().timestamp() - startTime.timestamp())))
 #        duration = datetime.utcfromtimestamp(24*3600+ datetime.today().timestamp() - startTime.timestamp())
 #        print (duration.strftime("%Y-%m-%d %H:%M:%S.%f"), ' one day added manually, zero days is 1970-01-01')
@@ -52,7 +53,7 @@ def end(startTime = None, dbConnection = None):
 def make_db_table (dbconnection, tablename):
 # !!!!!!!!!!!!!!!!! INTEGER may store float, and it happened with filetime, so CAST(filetime AS INTEGER) is 'better' used in selects
 # https://www.sqlite.org/datatype3.html
-# A CAST conversion is similar to the conversion that takes place when a column affinity is applied to a value except that with the CAST operator the conversion always takes place even if the conversion lossy and irreversible, whereas column affinity only changes the data type of a value if the change is lossless and reversible. 
+# A CAST conversion is similar to the conversion that takes place when a column affinity is applied to a value except that with the CAST operator the conversion always takes place even if the conversion lossy and irreversible, whereas column affinity only changes the data type of a value if the change is lossless and reversible.
     # deletion can be todelete deleted
     dbconnection.execute('CREATE TABLE IF NOT EXISTS ' + tablename +
     ''' (id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -78,6 +79,15 @@ def add_index_db_table_sha256 (dbconnection, tablename):
 def add_index_db_table_filepath (dbconnection, tablename):
     dbconnection.execute('CREATE INDEX IF NOT EXISTS "path" ON "' + tablename + '" ("filepath")')
 
+# not used, for possible future functionality to move/rename files
+def make_moves_table (dbconnection, tablename):
+    dbconnection.execute('CREATE TABLE IF NOT EXISTS ' + tablename +
+    ''' (id INTEGER PRIMARY KEY AUTOINCREMENT,
+    filepath_from TEXT,
+    filepath_to TEXT,
+    runID TEXT
+    );''')
+
 # get some info on schema, not much usefull, using DB browser better
 '''
 cursor = dbConnection.cursor()
@@ -99,7 +109,7 @@ c = dbConnection.execute("SELECT sum (filesize) as Total FROM (SELECT filesize F
 #print (myLen)
 for row in c:
     print ('Total: ')
-    uprint ("{:,.0f}".format(row['Total']).replace(",", " ")) 
+    uprint ("{:,.0f}".format(row['Total']).replace(",", " "))
     print ()
 
 dbConnection.close()
@@ -115,7 +125,7 @@ c = dbConnection.execute("SELECT filesize, filename, filepath, COUNT (filepath) 
 for row in c:
     print (row['filename'])
     print ('Qty: ', row['Qty'])
-    uprint ("{:,.0f}".format(row['filesize']).replace(",", " ")) 
+    uprint ("{:,.0f}".format(row['filesize']).replace(",", " "))
     print ()
 
 dbConnection.close()
@@ -131,7 +141,7 @@ c = dbConnection.execute("SELECT filesize, filename, filepath, COUNT (filepath) 
 for row in c:
     print (row['filename'])
    print ('Qty: ', row['Qty'])
-    uprint ("{:,.0f}".format(row['filesize']).replace(",", " ")) 
+    uprint ("{:,.0f}".format(row['filesize']).replace(",", " "))
     print ()
 
 dbConnection.close()
