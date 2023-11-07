@@ -1,3 +1,6 @@
+# 5.12, 2023 Nov 7
+# added info in output at the end of deletefiles function
+
 # 5.11, 2023 Nov 7
 # added details in output of sync function to more easily identify and analyse issues
 # bug fix: changed encoding of files_functions.py and added python command to the first line to guard against accidental running as bash shell script

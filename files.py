@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-__version__ = "5.11, 2023 Nov 7"
+__version__ = "5.12, 2023 Nov 7"
 # Python 3.8, Linux Mint 20.2/21 tested
 # Only some earlier versions IIRC were run on Windows, it might still work or require minor changes to paths (/ vs \).
 
@@ -627,6 +627,7 @@ def comparefiles (tablepossibleduplicates, tablemain):
     print ('Files marked for deletion: ', "{:,.0f}".format(recommended_for_deletion).replace(",", " "), ' out of:', "{:,.0f}".format(processed).replace(",", " "))
     print ('Recommended for name change: ', "{:,.0f}".format(recommendedNameChange).replace(",", " "))
     print()
+    return [processed,recommended_for_deletion]
 
 # ----------------------------------------------------------------------------------------------------------------------------------------------------#
 #
@@ -755,12 +756,12 @@ def comparefolders (tablepossibleduplicates, tablemain):
 # ----------------------------------------------------------------------------------------------------------------------------------------------------#
 #
 # delete files marked for deletion
-def deletefiles(targetpath, tablename):
+def deletefiles(targetpath, tablename, compare_result=None):
 
-    uprint("----- deleting files marked 'todelete' in 'action' field in table '" + tablename + "' for disk '" + diskname + "' from '" + targetpath  + "' -----\n" ) 
+    uprint("----- deleting files marked 'todelete' in 'action' field in table '" + tablename + "' for disk '" + diskname + "' from '" + targetpath  + "' -----\n" )
 
     processed = 0
-    qtyofparts = 10
+    qtyofparts = 5
     partprocessed = 0
     filesdeleted = 0
     deleteErrors = 0
@@ -811,9 +812,9 @@ def deletefiles(targetpath, tablename):
             print (strftime("%Y-%m-%d %H:%M:%S", localtime()))
             print ('part ', partprocessed, ' of ', qtyofparts, ' current item number ', processed, ' deleted: ', filesdeleted)
             print ()
- 
+
     dbConnection.commit()
-    print ('Files deleted: ', "{:,.0f}".format(filesdeleted).replace(",", " "), ' errors:', deleteErrors)
+    print ('Files deleted: ', "{:,.0f}".format(filesdeleted).replace(",", " "), (";" if compare_result is None else "out of: {:,.0f} of those that had been processed for deletion;".format(compare_result[0]).replace(",", " ")), ("all marked deleted, no errors" if deleteErrors == 0 else "errors:".format(deleteErrors).replace(",", " ")))
     print ()
 
 
@@ -1094,10 +1095,10 @@ if MainAction == 'delete':
     addfiles (diskname, full_path_d, tablename_temp, False)
 
     # comparing files and marking found duplicates for deletion
-    comparefiles (tablename_temp, tablename_main)
+    compare_result = comparefiles (tablename_temp, tablename_main)
 
     # deleting files found and marked to be deleted
-    deletefiles (full_path_d,tablename_temp) # works only if in comparefiles() deletion was marked in where to find, not found (deleteInFoundNotInFind = False)
+    deletefiles (full_path_d,tablename_temp, compare_result) # works only if in comparefiles() deletion was marked in where to find, not found (deleteInFoundNotInFind = False)
 
     # deleting empty folders
     deleteemptyfolders (full_path_d)
