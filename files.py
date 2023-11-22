@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-__version__ = "5.12, 2023 Nov 7"
+__version__ = "5.13, 2023 Nov 22"
 # Python 3.8, Linux Mint 20.2/21 tested
 # Only some earlier versions IIRC were run on Windows, it might still work or require minor changes to paths (/ vs \).
 
@@ -814,7 +814,8 @@ def deletefiles(targetpath, tablename, compare_result=None):
             print ()
 
     dbConnection.commit()
-    print ('Files deleted: ', "{:,.0f}".format(filesdeleted).replace(",", " "), (";" if compare_result is None else "out of: {:,.0f} of those that had been processed for deletion;".format(compare_result[0]).replace(",", " ")), ("all marked deleted, no errors" if deleteErrors == 0 else "errors:".format(deleteErrors).replace(",", " ")))
+    print ('Files deleted: ', "{:,.0f}".format(filesdeleted).replace(",", " "), (";" if compare_result is None else "out of: {:,.0f} of possible candidates for deletion".format(compare_result[0]).replace(",", " ")))
+    print (("All marked deleted, no errors" if deleteErrors == 0 else "Errors:".format(deleteErrors).replace(",", " ")))
     print ()
 
 
