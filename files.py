@@ -694,7 +694,8 @@ def comparefolders (tablepossibleduplicates, tablemain):
 
                 # Check for need for recursion by  checking if SELECT GLOB *folder*folder* is not empty
                 sql_query = 'SELECT filepath FROM ' + tablemain + ' WHERE ' + notDeletedFilter + ' AND (filepath GLOB ? OR filepath GLOB ?)' + ('' if disk == None else ' AND disk = "' + disk + '"')
-                multiple_levels_found = dbConnection.execute(sql_query,('*' + name_find + '*'+ name_find + '*','*' + name_find[0:-subfolders_separator_length] + name_find + '*',)).fetchone()
+                multiple_levels_found = dbConnection.execute(sql_query,('*' + name_find.replace('[','[[]') + '*'+ name_find.replace('[','[[]') + '*','*' + name_find[0:-subfolders_separator_length].replace('[','[[]') + name_find.replace('[','[[]') + '*',)).fetchone() # replace('[','[[]') needed to escape special meaning of [] for GLOB as many entries contain [ and ]
+
                 if multiple_levels_found == None: recursion_needed = False
                 else: recursion_needed = True
 
@@ -711,7 +712,7 @@ def comparefolders (tablepossibleduplicates, tablemain):
 
                     if debug: print('<DEBUG> sql_query:', sql_query)
 
-                    folder_found = dbConnection.execute(sql_query,(skip_start_of_path + '*' + name_find + '*',))
+                    folder_found = dbConnection.execute(sql_query,(skip_start_of_path + '*' + name_find.replace('[','[[]') + '*',)) # replace('[','[[]') needed to escape special meaning of [] for GLOB as many entries contain [ and ]
 
                     for folderFound in folder_found: # one fully matched is enough
 
@@ -736,7 +737,7 @@ def comparefolders (tablepossibleduplicates, tablemain):
                                 uprint ("Size not matched:", name_find, size_find, 'vs: ', folderFound['folder'], 'on: ', folderFound['disk'], size_found)
                             continue # not matched, check next folderFound
 
-                        file_find = dbConnection.execute('SELECT id, disk, filename, filenamenew, filepath, filesize, filetime, sha256, sha256_start, sha256_end FROM ' + tablepossibleduplicates + ' WHERE ' + notDeletedFilter + ' AND filepath GLOB ?',(name_find + '*',))
+                        file_find = dbConnection.execute('SELECT id, disk, filename, filenamenew, filepath, filesize, filetime, sha256, sha256_start, sha256_end FROM ' + tablepossibleduplicates + ' WHERE ' + notDeletedFilter + ' AND filepath GLOB ?',(name_find.replace('[','[[]') + '*',)) # replace('[','[[]') needed to escape special meaning of [] for GLOB as many entries contain [ and ]
 
                         for fileToFind in file_find:
 
@@ -758,7 +759,7 @@ def comparefolders (tablepossibleduplicates, tablemain):
             if found_qty == len (disks):
                 uprint (name_find_noseps, ' matched')
                 recommended_for_deletion += 1
-                dbConnection.execute('UPDATE ' + tablepossibleduplicates + ' SET runID = ?, action = "todelete" WHERE filepath GLOB ?',(runID, name_find + '*'))
+                dbConnection.execute('UPDATE ' + tablepossibleduplicates + ' SET runID = ?, action = "todelete" WHERE filepath GLOB ?',(runID, name_find.replace('[','[[]') + '*')) # replace('[','[[]') needed to escape special meaning of [] for GLOB as many entries contain [ and ]
             elif found_qty > 0:
                 uprint ("Folder: ", name_find_noseps, ' found only on disks: ', found_on_disks)
             else:
