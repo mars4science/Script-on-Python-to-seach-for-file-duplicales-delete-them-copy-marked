@@ -1,3 +1,8 @@
+# 5.14, 2024 June 5
+# added commands:
+# deletebylistondisk - delete (now move to --files_r location) files and folders with contents (aka recursively) based on list of sublocations provided (--files_l) within location (--files_d),
+# deletebylistindb - delete files and folders with contents (aka recursively) based on list of sublocations provided (--files_l) within database (--db)
+
 # 5.13, 2023 Nov 22
 # minor change in output for more clarity
 

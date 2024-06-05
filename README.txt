@@ -10,18 +10,16 @@ Only some earlier versions IIRC were run on Windows, it might still work or requ
 
 ##### Below is output of `./files.py --help` as pasted unformatted into text editor (might look better as bash output in terminal):
 
-usage: files.py [-h] [--version] [--verbose] [--debug] [--db DB]
-                [--files FILES] [--files_d FILES_D] [--files_c FILES_C]
-                [--disk DISK] [--disk_c DISK_C] [--disks DISKS]
-                [--pattern PATTERN] [--action ACTION] [--notchecktime]
-                [--notmatchtime] [--mne] [--mnb] [--nmn] [--simulateonly]
-                [--tmp] [--exact] [--rename] [--qty QTY] [--parts PARTS]
-                {read,add,searchname,searchpath,totals,delete,deletemarked,compareonly,change,copy,deletesame,makedirs,sync,sync2,deletefolders}
+usage: files.py [-h] [--version] [--verbose] [--debug] [--db DB] [--files FILES] [--files_d FILES_D] [--files_c FILES_C]
+                [--files_l FILES_L] [--files_r FILES_R] [--disk DISK] [--disk_c DISK_C] [--disks DISKS] [--pattern PATTERN]
+                [--action ACTION] [--notchecktime] [--notmatchtime] [--mne] [--mnb] [--nmn] [--simulateonly] [--tmp] [--exact]
+                [--rename] [--qty QTY] [--parts PARTS]
+                {read,add,searchname,searchpath,totals,delete,deletemarked,compareonly,change,copy,deletesame,makedirs,sync,sync2,deletefolders,deletebylist,deletebylistondisk,deletebylistindb}
 
 Process file structures, deleting duplicates renaming retained files is useful if additional info is not contained in extention - part of file name after last . symbol; paths better be passed as absolute
 
 positional arguments:
-  {read,add,searchname,searchpath,totals,delete,deletemarked,compareonly,change,copy,deletesame,makedirs,sync,sync2,deletefolders}
+  {read,add,searchname,searchpath,totals,delete,deletemarked,compareonly,change,copy,deletesame,makedirs,sync,sync2,deletefolders,deletebylist,deletebylistondisk,deletebylistindb}
                         command name: 
                         read - adds files in --filespath to database --db (modification date, size, sha256sum, path, name, --disk), 
                         adds - same as read but adds only those that are not already in --db (checks for same --disk AND path that includes name), 
@@ -35,7 +33,9 @@ positional arguments:
                         makedirs - make directories in path of files_c from filesdata entries in database, 
                         sync - add files absent on one disk/location (optional --pattern to select only part of filepaths, e.g. /folder1/%) to another disk/location and update the db, need disk, disk_c - to locate files in db, files, files_c - paths to roots of locations to copy from and copy to (paths from db are appended to them), 
                         sync2 - same as sync but do both ways, from files to files_c then from files_c to files, 
-                        deletefolders - delete top level folder(s) recursively in provided --files_d path if complete matched folders contents are found in database (--db) or other path (--files) by file sha256, name, size and modification time and only if file is found on each of all disks (--disks can be several times), also --notchecktime (optional)
+                        deletefolders - delete top level folder(s) recursively in provided --files_d path if complete matched folders contents are found in database (--db) or other path (--files) by file sha256, name, size and modification time and only if file is found on each of all disks (--disks can be several times), also --notchecktime (optional), 
+                        deletebylistondisk - delete (now move to --files_r location) files and folders with contents (aka recursively) based on list of sublocations provided (--files_l) within location (--files_d), 
+                        deletebylistindb - delete files and folders with contents (aka recursively) based on list of sublocations provided (--files_l) within database (--db)
 
 options:
   -h, --help            show this help message and exit
@@ -46,6 +46,8 @@ options:
   --files FILES         full path to the only/main file structure
   --files_d FILES_D     full path to other file structure - where objects need to be deleted
   --files_c FILES_C     full path to other file structure - whereto objects need to be copied for copy/or folders be created for makedirs
+  --files_l FILES_L     full path to a file with list of sublocations to be cleared - contents removed from disk or/and database
+  --files_r FILES_R     full path to other file structure - where objects to be deleted are moved to
   --disk DISK           disk name tag of file structure info - for add, read, totals, search{name|path}, sync, sync2
   --disk_c DISK_C       disk name tag to copy files to, used by sync, sync2 commands
   --disks DISKS         disk name tags when searched for candidates for deletion against database, if present, file should be present on all disks in main table to be considered a candidate, if omitted, should be present in main table as a whole. Should be one name per argument, several arguments possible, NOT several in one argument separated by comma

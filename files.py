@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-__version__ = "5.13, 2023 Nov 22"
+__version__ = "5.14, 2024 June 5"
 # Python 3.8, Linux Mint 20.2/21 tested
 # Only some earlier versions IIRC were run on Windows, it might still work or require minor changes to paths (/ vs \).
 
@@ -35,6 +35,7 @@ import codecs
 import hashlib
 import platform
 import shutil
+import stat
 
 import signal
 def signal_handler(sig,frame):
@@ -59,7 +60,7 @@ from argparse import RawTextHelpFormatter
 #from argparse import ArgumentParser
 
 parser = argparse.ArgumentParser(description='Process file structures, deleting duplicates renaming retained files is useful if additional info is not contained in extention - part of file name after last . symbol; paths better be passed as absolute', formatter_class=RawTextHelpFormatter)
-parser.add_argument('command', choices=['read','add', 'searchname','searchpath','totals', 'delete', 'deletemarked', 'compareonly', 'change', 'copy', 'deletesame', 'makedirs', 'sync', 'sync2', 'deletefolders'], help='command name: \nread - adds files in --filespath to database --db (modification date, size, sha256sum, path, name, --disk), \nadds - same as read but adds only those that are not already in --db (checks for same --disk AND path that includes name), \nsearch - outputs found files and info on them, \ntotals - outputs totals, \ndelete - deletes files in path (--files_d) against database (--db) or other path (--files) by file sha256, name, size and modification time and only if file is found on each of all disks (--disks can be several times), also --notchecktime --mne --mnb --nmn --rename (optional), \ndeletemarked - deleting (and renaming) what is marked already in database (by action field set to "todelete" in files_todelete table; if need to redo deletion for another disk, please run "change" to semi-manually change action field) and --files_d is used to add to path stored in database at beginning and --disk is used to delete marked for that disk only as a safeguard, delete from temp table, rename what is in main table, \ncompareonly - run only matching procedure for two tables in database which should be filled in already, \ncopy - copy files from one location (--files) to other (--files_c) for those files where action field in database (--db) is set to "tocopy" for specific --disk, \ndeletesame - delete duplicates in same location (--files_d) by filesize, sha256; also by name (exact or not, partial matching option same effect as do not match) and timestamp (exact ot not), \nmakedirs - make directories in path of files_c from filesdata entries in database, \nsync - add files absent on one disk/location (optional --pattern to select only part of filepaths, e.g. /folder1/%%) to another disk/location and update the db, need disk, disk_c - to locate files in db, files, files_c - paths to roots of locations to copy from and copy to (paths from db are appended to them), \nsync2 - same as sync but do both ways, from files to files_c then from files_c to files, \ndeletefolders - delete top level folder(s) recursively in provided --files_d path if complete matched folders contents are found in database (--db) or other path (--files) by file sha256, name, size and modification time and only if file is found on each of all disks (--disks can be several times), also --notchecktime (optional)')
+parser.add_argument('command', choices=['read','add', 'searchname','searchpath','totals', 'delete', 'deletemarked', 'compareonly', 'change', 'copy', 'deletesame', 'makedirs', 'sync', 'sync2', 'deletefolders', 'deletebylist', 'deletebylistondisk', 'deletebylistindb'], help='command name: \nread - adds files in --filespath to database --db (modification date, size, sha256sum, path, name, --disk), \nadds - same as read but adds only those that are not already in --db (checks for same --disk AND path that includes name), \nsearch - outputs found files and info on them, \ntotals - outputs totals, \ndelete - deletes files in path (--files_d) against database (--db) or other path (--files) by file sha256, name, size and modification time and only if file is found on each of all disks (--disks can be several times), also --notchecktime --mne --mnb --nmn --rename (optional), \ndeletemarked - deleting (and renaming) what is marked already in database (by action field set to "todelete" in files_todelete table; if need to redo deletion for another disk, please run "change" to semi-manually change action field) and --files_d is used to add to path stored in database at beginning and --disk is used to delete marked for that disk only as a safeguard, delete from temp table, rename what is in main table, \ncompareonly - run only matching procedure for two tables in database which should be filled in already, \ncopy - copy files from one location (--files) to other (--files_c) for those files where action field in database (--db) is set to "tocopy" for specific --disk, \ndeletesame - delete duplicates in same location (--files_d) by filesize, sha256; also by name (exact or not, partial matching option same effect as do not match) and timestamp (exact ot not), \nmakedirs - make directories in path of files_c from filesdata entries in database, \nsync - add files absent on one disk/location (optional --pattern to select only part of filepaths, e.g. /folder1/%%) to another disk/location and update the db, need disk, disk_c - to locate files in db, files, files_c - paths to roots of locations to copy from and copy to (paths from db are appended to them), \nsync2 - same as sync but do both ways, from files to files_c then from files_c to files, \ndeletefolders - delete top level folder(s) recursively in provided --files_d path if complete matched folders contents are found in database (--db) or other path (--files) by file sha256, name, size and modification time and only if file is found on each of all disks (--disks can be several times), also --notchecktime (optional), \ndeletebylistondisk - delete (now move to --files_r location) files and folders with contents (aka recursively) based on list of sublocations provided (--files_l) within location (--files_d), \ndeletebylistindb - delete files and folders with contents (aka recursively) based on list of sublocations provided (--files_l) within database (--db)')
 
 parser.add_argument('--version', action = 'version', version='%(prog)s version '+ __version__)
 parser.add_argument('--verbose', action='store_true', dest='verbose', help='output additional info, default: no output')
@@ -70,6 +71,8 @@ parser.add_argument('--db', default='./temp.db', help='full path to database loc
 parser.add_argument('--files', help='full path to the only/main file structure')
 parser.add_argument('--files_d', help='full path to other file structure - where objects need to be deleted')
 parser.add_argument('--files_c', help='full path to other file structure - whereto objects need to be copied for copy/or folders be created for makedirs')
+parser.add_argument('--files_l', help='full path to a file with list of sublocations to be cleared - contents removed from disk or/and database')
+parser.add_argument('--files_r', help='full path to other file structure - where objects to be deleted are moved to')
 parser.add_argument('--disk', help='disk name tag of file structure info - for add, read, totals, search{name|path}, sync, sync2')
 parser.add_argument('--disk_c', help='disk name tag to copy files to, used by sync, sync2 commands')
 parser.add_argument('--disks', action='append', help='disk name tags when searched for candidates for deletion against database, if present, file should be present on all disks in main table to be considered a candidate, if omitted, should be present in main table as a whole. Should be one name per argument, several arguments possible, NOT several in one argument separated by comma')
@@ -95,6 +98,8 @@ MainAction = args.command
 full_path = args.files
 full_path_d = args.files_d
 full_path_c = args.files_c
+full_path_l = args.files_l
+full_path_r = args.files_r
 dblocation = args.db
 diskname = args.disk
 diskname_c = args.disk_c
@@ -147,7 +152,7 @@ if full_path != None and full_path == full_path_d:
     print ('- paths to files same: --files and --files_d, terminating.\n To delete in same location: deletesame command with only --files_d.')
     togo = False
 
-if MainAction in ['add', 'searchname', 'searchpath', 'totals', 'change', 'copy', 'deletemarked', 'makedirs', 'sync', 'sync2'] and dblocation == './temp.db':
+if MainAction in ['add', 'searchname', 'searchpath', 'totals', 'change', 'copy', 'deletemarked', 'makedirs', 'sync', 'sync2', 'deletebylistindb'] and dblocation == './temp.db':
     print ('- path to database ("--db") is required for this command, if you want to use ./temp.db, please give another path version to it. e.g. full path')
     togo = False
 
@@ -171,7 +176,7 @@ if MainAction in ['read', 'copy', 'deletemarked', 'makedirs', 'add', 'sync', 'sy
     print ('- diskname ("--disk") is required for this command')
     togo = False
  
-if MainAction in ['delete', 'deletemarked', 'deletesame'] and full_path_d == None:
+if MainAction in ['delete', 'deletemarked', 'deletesame', 'deletebylistondisk'] and full_path_d == None:
     print ('- path to file structure where deletion is expected (--files_d) is required for this command')
     togo = False
 
@@ -187,6 +192,14 @@ if MainAction in ['sync', 'sync2'] and diskname_c == None:
     print ('- diskname to copy to ("--disk_c") is required for this command')
     togo = False
 
+if MainAction in ['deletebylistondisk', 'deletebylistindb'] and full_path_l == None:
+    print ('- list of sublocations ("--files_l") is required for this command')
+    togo = False
+
+if MainAction in ['deletebylistondisk'] and full_path_r == None:
+    print ('- path to where to move file system objects to ("--files_r") is required for this command')
+    togo = False
+
 if full_path != None and not Path(full_path).exists():
     uprint(" --full_path '%s' not found, typo?" % full_path)
     togo = False
@@ -197,6 +210,14 @@ if full_path_c != None and not Path(full_path_c).exists():
 
 if full_path_d != None and not Path(full_path_d).exists():
     uprint(" --full_path_d '%s' not found, typo?" % full_path_d)
+    togo = False
+
+if full_path_l != None and not Path(full_path_l).exists():
+    uprint(" --full_path_l '%s' not found, typo?" % full_path_d)
+    togo = False
+
+if full_path_r != None and not Path(full_path_r).exists():
+    uprint(" --full_path_r '%s' not found, typo?" % full_path_r)
     togo = False
 
 if togo == False:
@@ -1318,6 +1339,105 @@ if MainAction == 'sync':
     sync_one_way(full_path, diskname, full_path_c, diskname_c)
     end(startTime, dbConnection)
 
+
+# ----------------------------------------------------------------------------------------------------------------------------------------------------
+#
+# delete files and folders with contents (aka recursively) based on list of sublocations provided (--files_l) within location (--files_d) or/and within database (--db)
+
+def deletebylist(full_path_l, full_path_d, tablename_main, deletebylistondisk, deletebylistindb):
+
+    f = open (full_path_l, 'r', encoding="utf-8")
+    deleted = 0
+    notdeletedasnotfound = 0
+    notdeleteduetootherreasons = 0
+
+    if deletebylistondisk:
+        for line_full in f:
+            line = line_full[:-1] # :-1 to skip line break
+            path = full_path_d + line
+            if path != full_path_d: # check for empty lines
+                try:
+                    isdir = stat.S_ISDIR(Path(path).lstat().st_mode)
+                except Exception as e:
+                    uprint ("(Un?)expected error: " + str(e))
+                    notdeletedasnotfound += 1
+                    continue # "for" loop, skipping trying to remove files as probably for found
+
+                if isdir:
+                    try:
+#                        shutil.rmtree(path)
+                        shutil.move(path, full_path_r)
+                        deleted += 1
+                        uprint (path)
+                    except Exception as e:
+                        uprint ("(Un?)expected error: " + str(e))
+                        notdeleteduetootherreasons += 1
+                else:
+                    try:
+#                        os.remove(path)
+                        shutil.move(path, full_path_r)
+                        deleted += 1
+                        uprint (path)
+                    except Exception as e:
+                        uprint ("(Un?)expected error: " + str(e))
+                        notdeleteduetootherreasons += 1
+
+        print ()
+        print ('Number of sublocations that have been deleted           : {:,.0f}'.format(deleted).replace(',', ' '))
+        print ('Number of sublocations that have been not been found    : {:,.0f}'.format(notdeletedasnotfound).replace(',', ' '))
+        print ('Number of sublocations not deleted due to other reasons : {:,.0f}'.format(notdeleteduetootherreasons).replace(',', ' '))
+
+    if deletebylistindb:
+        sublocations = 0
+        deleted_sublocations = 0
+        deleted_entries = 0
+
+        for line_full in f:
+            line = line_full[:-1] # :-1 to skip line break
+            if line != '': # check for empty lines
+                sublocations += 1
+                if line[-1:] == '/': # folders are expected to end with '/' (as there could be another folder starting same otherwise)
+#                    cursor = dbConnection.execute('DELETE FROM ' + tablename_main + ' WHERE filepath GLOB ?', (line.replace('[','[[]') + '*', )) # replace('[','[[]') needed to cancel special meaning of [] for GLOB as many entries contain [ and ]
+                    cursor = dbConnection.execute('UPDATE ' + tablename_main + ' SET action = "deleted" WHERE filepath GLOB ?', (line.replace('[','[[]') + '*', )) # replace('[','[[]') needed to cancel special meaning of [] for GLOB as many entries contain [ and ]
+                else:
+#                    cursor = dbConnection.execute('DELETE FROM ' + tablename_main + ' WHERE filepath = ?', (line, ))
+                    cursor = dbConnection.execute('UPDATE ' + tablename_main + ' SET action = "deleted" WHERE filepath = ?', (line, ))
+                deleted_entries += cursor.rowcount
+                if cursor.rowcount > 0:
+                    deleted_sublocations += 1
+                if cursor.rowcount == 0:
+                    uprint (line)
+                uprint (cursor.rowcount, line)
+        dbConnection.commit()
+        print ('Number of sublocations that have been processed : {:,.0f}'.format(sublocations).replace(',', ' '))
+        print ('Number of sublocations that have been removed   : {:,.0f}'.format(deleted_sublocations).replace(',', ' '))
+        print ('Number of  db entries  that have been removed   : {:,.0f}'.format(deleted_entries).replace(',', ' '))
+        if deleted_sublocations < sublocations:
+            print ('  ! NOT ALL sublocations have been removed')
+
+    f.close()
+
+# ----------------------------------------------------------------------------------------------------------------------------------------------------
+#
+#
+
+if MainAction == 'deletebylistondisk':
+
+    uprint("----- deleting files and folders with contents (aka recursively) based on list of sublocations provided in '" + full_path_l + "' within location '" + full_path_d + "' -----\n")
+    deletebylist (full_path_l, full_path_d, tablename_main, True, False)
+    end(startTime, dbConnection)
+
+# ----------------------------------------------------------------------------------------------------------------------------------------------------
+#
+#
+
+if MainAction == 'deletebylistindb':
+
+    uprint("----- deleting db entries via pattern matching (ie recursively for folders) based on list of sublocations provided in '" + full_path_l + "' within database '" + dblocation + "' -----\n")
+    deletebylist (full_path_l, full_path_d, tablename_main, False, True)
+    end(startTime, dbConnection)
+
+
 # ----------------------------------------------------------------------------------------------------------------------------------------------------
 #
 # SOME OTHER USEFUL CODE
@@ -1339,3 +1459,5 @@ if MainAction == 'sync':
 #res = conn.execute("SELECT name FROM sqlite_master WHERE type='table';")
 #for name in res:
 #    print name[0]
+
+# shutil.copytree(path, '/media/ramdisk/1' + line, dirs_exist_ok=True)
