@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-__version__ = "5.14, 2024 June 5"
+__version__ = "5.15, 2024 June 6"
 # Python 3.8, Linux Mint 20.2/21 tested
 # Only some earlier versions IIRC were run on Windows, it might still work or require minor changes to paths (/ vs \).
 
