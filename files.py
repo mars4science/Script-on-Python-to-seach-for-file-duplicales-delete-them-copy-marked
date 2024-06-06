@@ -1424,7 +1424,7 @@ def deletebylist(full_path_l, full_path_d, tablename_main, deletebylistondisk, d
 
 if MainAction == 'deletebylistondisk':
 
-    uprint("----- deleting files and folders with contents (aka recursively) based on list of sublocations provided in '" + full_path_l + "' within location '" + full_path_d + "' -----\n")
+    uprint("----- deleting (moving to '" + full_path_r + "') files and folders with contents (aka recursively) based on list of sublocations provided in '" + full_path_l + "' within location '" + full_path_d + "' -----\n")
     deletebylist (full_path_l, full_path_d, tablename_main, True, False)
     end(startTime, dbConnection)
 
@@ -1434,10 +1434,9 @@ if MainAction == 'deletebylistondisk':
 
 if MainAction == 'deletebylistindb':
 
-    uprint("----- deleting db entries via pattern matching (ie recursively for folders) based on list of sublocations provided in '" + full_path_l + "' within database '" + dblocation + "' -----\n")
+    uprint("----- deleting db entries via pattern matching (i.e. recursively for folders) based on list of sublocations provided in '" + full_path_l + "' within database '" + dblocation + "' -----\n")
     deletebylist (full_path_l, full_path_d, tablename_main, False, True)
     end(startTime, dbConnection)
-
 
 # ----------------------------------------------------------------------------------------------------------------------------------------------------
 #
