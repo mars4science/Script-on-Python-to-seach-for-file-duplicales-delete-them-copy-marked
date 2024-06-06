@@ -14,12 +14,12 @@ usage: files.py [-h] [--version] [--verbose] [--debug] [--db DB] [--files FILES]
                 [--files_l FILES_L] [--files_r FILES_R] [--disk DISK] [--disk_c DISK_C] [--disks DISKS] [--pattern PATTERN]
                 [--action ACTION] [--notchecktime] [--notmatchtime] [--mne] [--mnb] [--nmn] [--simulateonly] [--tmp] [--exact]
                 [--rename] [--qty QTY] [--parts PARTS]
-                {read,add,searchname,searchpath,totals,delete,deletemarked,compareonly,change,copy,deletesame,makedirs,sync,sync2,deletefolders,deletebylist,deletebylistondisk,deletebylistindb}
+                {read,add,searchname,searchpath,totals,delete,deletemarked,compareonly,change,copy,deletesame,makedirs,sync,sync2,deletefolders,deletebylist,deletebylistondisk,deletebylistindb,movebylistondisk,movebylistindb}
 
 Process file structures, deleting duplicates renaming retained files is useful if additional info is not contained in extention - part of file name after last . symbol; paths better be passed as absolute
 
 positional arguments:
-  {read,add,searchname,searchpath,totals,delete,deletemarked,compareonly,change,copy,deletesame,makedirs,sync,sync2,deletefolders,deletebylist,deletebylistondisk,deletebylistindb}
+  {read,add,searchname,searchpath,totals,delete,deletemarked,compareonly,change,copy,deletesame,makedirs,sync,sync2,deletefolders,deletebylist,deletebylistondisk,deletebylistindb,movebylistondisk,movebylistindb}
                         command name: 
                         read - adds files in --filespath to database --db (modification date, size, sha256sum, path, name, --disk), 
                         adds - same as read but adds only those that are not already in --db (checks for same --disk AND path that includes name), 
@@ -35,7 +35,9 @@ positional arguments:
                         sync2 - same as sync but do both ways, from files to files_c then from files_c to files, 
                         deletefolders - delete top level folder(s) recursively in provided --files_d path if complete matched folders contents are found in database (--db) or other path (--files) by file sha256, name, size and modification time and only if file is found on each of all disks (--disks can be several times), also --notchecktime (optional), 
                         deletebylistondisk - delete (now move to --files_r location) files and folders with contents (aka recursively) based on list of sublocations provided (--files_l) within location (--files_d), 
-                        deletebylistindb - delete files and folders with contents (aka recursively) based on list of sublocations provided (--files_l) within database (--db)
+                        deletebylistindb - delete files and folders with contents (aka recursively) based on list of sublocations provided (--files_l) within database (--db), 
+                        movebylistondisk - move files and folders with contents (aka recursively) based on list of sublocations provided (--files_l) within location (--files), 
+                        movebylistindb - move files and folders with contents (aka recursively) based on list of sublocations provided (--files_l) within database (--db)
 
 options:
   -h, --help            show this help message and exit
@@ -46,7 +48,7 @@ options:
   --files FILES         full path to the only/main file structure
   --files_d FILES_D     full path to other file structure - where objects need to be deleted
   --files_c FILES_C     full path to other file structure - whereto objects need to be copied for copy/or folders be created for makedirs
-  --files_l FILES_L     full path to a file with list of sublocations to be cleared - contents removed from disk or/and database
+  --files_l FILES_L     full path to a file with list of sublocations to be cleared or moved(renamed) - contents [re]moved on disk or/and in database; for actions in db, lines need to be started with slash "/" and additionally for folders also ended with slash "/";  for deleteby commands - single location, for moveby commands - pair of locations on one line separated by "_ * _" - where from and where to move to (or to which name to rename to), target location is to include name of object to be moved, if last part of name is same as in from, then it is like move, if different - like rename optionally with move
   --files_r FILES_R     full path to other file structure - where objects to be deleted are moved to
   --disk DISK           disk name tag of file structure info - for add, read, totals, search{name|path}, sync, sync2
   --disk_c DISK_C       disk name tag to copy files to, used by sync, sync2 commands

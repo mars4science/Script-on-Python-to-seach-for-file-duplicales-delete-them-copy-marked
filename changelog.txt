@@ -1,3 +1,9 @@
+# 5.17, 2024 June 6
+# added commands:
+# movebylistondisk - move/rename files and folders with contents (aka recursively) based on list of sublocations provided (--files_l) within location (--files),
+# movebylistindb - move/rename files and folders with contents (aka recursively) based on list of sublocations provided (--files_l) within database (--db)
+# some changes to output of functions for other commands
+
 # 5.16, 2024 June 6
 # added more additional help and other output
 
