@@ -1,3 +1,6 @@
+# 5.16, 2024 June 6
+# added more additional help and other output
+
 # 5.15, 2024 June 6
 # changes to output for more info and clarity, added notDeletedFilter in SELECTs of sync and deletebylist
 

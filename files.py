@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-__version__ = "5.15, 2024 June 6"
+__version__ = "5.16, 2024 June 6"
 # Python 3.8, Linux Mint 20.2/21 tested
 # Only some earlier versions IIRC were run on Windows, it might still work or require minor changes to paths (/ vs \).
 
@@ -71,7 +71,7 @@ parser.add_argument('--db', default='./temp.db', help='full path to database loc
 parser.add_argument('--files', help='full path to the only/main file structure')
 parser.add_argument('--files_d', help='full path to other file structure - where objects need to be deleted')
 parser.add_argument('--files_c', help='full path to other file structure - whereto objects need to be copied for copy/or folders be created for makedirs')
-parser.add_argument('--files_l', help='full path to a file with list of sublocations to be cleared - contents removed from disk or/and database')
+parser.add_argument('--files_l', help='full path to a file with list of sublocations to be cleared - contents removed from disk or/and database; for removals in db, lines need to be started with slash "/" and additionally for folders also ended with slash "/"')
 parser.add_argument('--files_r', help='full path to other file structure - where objects to be deleted are moved to')
 parser.add_argument('--disk', help='disk name tag of file structure info - for add, read, totals, search{name|path}, sync, sync2')
 parser.add_argument('--disk_c', help='disk name tag to copy files to, used by sync, sync2 commands')
@@ -972,6 +972,7 @@ def addfiles(disk_name, files_path, tablename, checksame):
     processed_dirs = 0
     partprocessed = 0
     added_files = 0
+    added_size = 0
     links_updated = 0
 
     print ("Files to process: ", filestoprocess)
@@ -1056,6 +1057,7 @@ def addfiles(disk_name, files_path, tablename, checksame):
 
                     dbConnection.execute('INSERT INTO ' + tablename + ' (disk, filename, filepath, filesize, filetime, sha256, sha256_start, sha256_end) VALUES (?,?,?,?, CAST(? AS INTEGER),?,?,?)', (disk_name, filename, filepath_db, filesize, filetime, sha256_temp, sha256_start, sha256_end))
                     added_files += 1
+                    added_size += filesize
 
                 #dbConnection.commit()
 
@@ -1075,7 +1077,8 @@ def addfiles(disk_name, files_path, tablename, checksame):
 
     dbConnection.commit()
 
-    print ('Number of files   that have been added : {:,.0f}'.format(added_files).replace(',', ' '))        
+    print ('Number of files   that have been added : {:,.0f}'.format(added_files).replace(',', ' '))
+    print ('Size (in bytes)   that have been added : {:,.0f}'.format(added_size).replace(',', ' '))
     print ('Number of files   that have been read  : {:,.0f}'.format(processed_files).replace(',', ' '))
     print ('Number of folders that have been read  : {:,.0f}'.format(processed_dirs).replace(',', ' '))
     print ('Sum    of objects that have been read  : {:,.0f}'.format(processed_dirs + processed_files).replace(',', ' '))
