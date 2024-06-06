@@ -1297,7 +1297,7 @@ def sync_one_way(source_path, source_disk, dest_path, dest_disk):
     # last extra sometimes unneeded binding is not OK too (so FileNameEx is not a binding too): "Incorrect number of bindings supplied. The current statement uses 3, and there are 4 supplied." (One might have two lines with execute or write '%' (any) in FileNameEx to possibly reduce SQL efficiency as workarounds.)
 
     c = dbConnection.execute('UPDATE "' + tablename_main + '" set action=null where (action="tocopy" or action="copied") AND disk = ?', (source_disk,))
-    c = dbConnection.execute('UPDATE "' + tablename_main + '" set action="tocopy" where id not in (select DISTINCT a.id from "' + tablename_main + '" as a join "' + tablename_main + '" as b on a.filepath=b.filepath where a.sha256=b.sha256 and a.disk=? and b.disk=?) and disk=?'+ ('' if (FileNameEx is None) else ' and filepath like "' + FileNameEx + '"'), (source_disk,dest_disk,source_disk,))
+    c = dbConnection.execute('UPDATE "' + tablename_main + '" set action="tocopy" WHERE ' + notDeletedFilter + ' AND id not in (select DISTINCT a.id from "' + tablename_main + '" as a join "' + tablename_main + '" as b on a.filepath=b.filepath where a.sha256=b.sha256 and a.disk=? and b.disk=?) and disk=?'+ ('' if (FileNameEx is None) else ' and filepath like "' + FileNameEx + '"'), (source_disk,dest_disk,source_disk,))
     dbConnection.commit()
 
     copy_result = copymarked(source_disk,source_path,dest_path)
@@ -1399,10 +1399,10 @@ def deletebylist(full_path_l, full_path_d, tablename_main, deletebylistondisk, d
                 sublocations += 1
                 if line[-1:] == '/': # folders are expected to end with '/' (as there could be another folder starting same otherwise)
 #                    cursor = dbConnection.execute('DELETE FROM ' + tablename_main + ' WHERE filepath GLOB ?', (line.replace('[','[[]') + '*', )) # replace('[','[[]') needed to cancel special meaning of [] for GLOB as many entries contain [ and ]
-                    cursor = dbConnection.execute('UPDATE ' + tablename_main + ' SET action = "deleted" WHERE filepath GLOB ?', (line.replace('[','[[]') + '*', )) # replace('[','[[]') needed to cancel special meaning of [] for GLOB as many entries contain [ and ]
+                    cursor = dbConnection.execute('UPDATE ' + tablename_main + ' SET action = "deleted" WHERE filepath GLOB ? AND ' + notDeletedFilter, (line.replace('[','[[]') + '*', )) # replace('[','[[]') needed to cancel special meaning of [] for GLOB as many entries contain [ and ]
                 else:
 #                    cursor = dbConnection.execute('DELETE FROM ' + tablename_main + ' WHERE filepath = ?', (line, ))
-                    cursor = dbConnection.execute('UPDATE ' + tablename_main + ' SET action = "deleted" WHERE filepath = ?', (line, ))
+                    cursor = dbConnection.execute('UPDATE ' + tablename_main + ' SET action = "deleted" WHERE filepath = ? AND ' + notDeletedFilter, (line, ))
                 deleted_entries += cursor.rowcount
                 if cursor.rowcount > 0:
                     deleted_sublocations += 1
@@ -1437,6 +1437,7 @@ if MainAction == 'deletebylistindb':
     uprint("----- deleting db entries via pattern matching (i.e. recursively for folders) based on list of sublocations provided in '" + full_path_l + "' within database '" + dblocation + "' -----\n")
     deletebylist (full_path_l, full_path_d, tablename_main, False, True)
     end(startTime, dbConnection)
+
 
 # ----------------------------------------------------------------------------------------------------------------------------------------------------
 #
