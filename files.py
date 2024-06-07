@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-__version__ = "5.18, 2024 June 7"
+__version__ = "5.19, 2024 June 7"
 # Python 3.8, Linux Mint 20.2/21 tested
 # Only some earlier versions IIRC were run on Windows, it might still work or require minor changes to paths (/ vs \).
 
@@ -1499,9 +1499,9 @@ def movebylist(full_path_l, full_path, tablename_main, movebylistondisk, movebyl
                 sublocations += 1
                 if path_from[-1:] == '/' and path_to[-1:] == '/': # folders are expected to end with '/' (as there could be another folder starting same otherwise)
 
-                    cursor = dbConnection.execute('UPDATE ' + tablename_main + ' SET filepath = "' + path_to + '"|| substr(filepath,length("' + path_from + '")+1) WHERE filepath GLOB ? AND ' + notDeletedFilter, (path_from.replace('[','[[]') + '*', )) # replace('[','[[]') needed to cancel special meaning of [] for GLOB as many entries contain [ and ]; || is concatenation in SQLite; for folders UPDATE only filepath
+                    cursor = dbConnection.execute('UPDATE ' + tablename_main + ' SET action = "moved", filepath = "' + path_to + '"|| substr(filepath,length("' + path_from + '")+1) WHERE filepath GLOB ? AND ' + notDeletedFilter, (path_from.replace('[','[[]') + '*', )) # replace('[','[[]') needed to cancel special meaning of [] for GLOB as many entries contain [ and ]; || is concatenation in SQLite; for folders UPDATE only filepath
                 else: # regular file
-                    cursor = dbConnection.execute('UPDATE ' + tablename_main + ' SET filepath = "' + path_to + '", filename = "' + path_to[path_to.rfind('/')+len('/'):] + '" WHERE filepath = ? AND ' + notDeletedFilter, (path_from, )) # for regular files UPDATE filepath AND filename
+                    cursor = dbConnection.execute('UPDATE ' + tablename_main + ' SET action = "moved", filepath = "' + path_to + '", filename = "' + path_to[path_to.rfind('/')+len('/'):] + '" WHERE filepath = ? AND ' + notDeletedFilter, (path_from, )) # for regular files UPDATE filepath AND filename
 
                 moved_entries += cursor.rowcount
                 if cursor.rowcount > 0:
