@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 
-__version__ = "5.17, 2024 June 6"
+__version__ = "5.18, 2024 June 7"
 # Python 3.8, Linux Mint 20.2/21 tested
 # Only some earlier versions IIRC were run on Windows, it might still work or require minor changes to paths (/ vs \).
 
@@ -458,7 +458,7 @@ if MainAction == 'totals':
 
     for row_d in d:
 
-        c = dbConnection.execute('SELECT disk, filesize, filename, filenamenew, filepath, filetime, action, runID, sha256, sha256_start, sha256_end FROM ' + (tablename_temp if use_temp_table else tablename_main) + ('' if (row_d['disk'] is None) else ' WHERE disk = "' + row_d['disk'] + '"')) 
+        c = dbConnection.execute('SELECT disk, filesize, filename, filenamenew, filepath, filetime, action, runID, sha256, sha256_start, sha256_end FROM ' + (tablename_temp if use_temp_table else tablename_main) + ('' if (row_d['disk'] is None) else ' WHERE disk = "' + row_d['disk'] + '" ORDER BY disk,filepath')) 
 
         hasher = hashlib.sha256() #md5
         hasher_start = hashlib.sha256()

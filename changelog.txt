@@ -1,3 +1,6 @@
+# 5.18, 2024 June 7
+# fix: added 'ORDER BY disk,filepath' to SELECTs of 'total' command to make summary hash same for disks
+
 # 5.17, 2024 June 6
 # added commands:
 # movebylistondisk - move/rename files and folders with contents (aka recursively) based on list of sublocations provided (--files_l) within location (--files),
